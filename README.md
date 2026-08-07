@@ -11,7 +11,11 @@ MIDI/NWC 악보 파일을 업로드하면 계이름·장조·박자를 자동 �
 
 - React + Vite + TypeScript (프론트엔드)
 - Tone.js (Web Audio 합성 악기 — 샘플 파일 없이 동작)
-- Cloudflare Pages Functions + D1 (곡 분석 데이터 저장 API)
+- Express + Node 내장 `node:sqlite` (곡 분석 데이터 저장 API, 상시구동 서버)
+- Cloudflare Tunnel(cloudflared)로 `music.jungsim.org`에 노출, NSSM으로 Windows 서비스 등록
+
+개인용 앱으로 Cloudflare Pages 대신 이 PC에서 직접 상시 구동하는 방식을 씁니다
+(자매 앱인 pastor-os/emotion/jarvis와 동일한 패턴).
 
 ## 지원 파일 형식
 
@@ -30,47 +34,64 @@ npm install
 npm run dev
 ```
 
-프론트엔드만 뜨며, `/api/songs` 같은 API는 동작하지 않습니다 (더미 상태).
+프론트엔드만 뜨며, `/api/songs` 같은 API는 동작하지 않습니다.
 
-### API + D1까지 포함해서 로컬 테스트
+### 상시구동 서버까지 포함해서 로컬 테스트
 
 ```bash
-npm run d1:init:local   # 로컬 D1에 스키마 적용 (최초 1회)
-npm run pages:dev        # 빌드 후 wrangler pages dev로 API까지 포함해서 실행
+npm run build   # dist/ 생성
+npm start        # Express 서버 (http://localhost:8791) — 정적 파일 + /api/songs 모두 서빙
 ```
 
-## Cloudflare Pages 배포
+DB 파일은 `data/music.db`에 자동 생성됩니다 (최초 요청 시 schema.sql 자동 적용).
 
-1. **Cloudflare 로그인 및 D1 데이터베이스 생성** (최초 1회)
+## 배포 (Windows + Cloudflare Tunnel)
 
-   ```bash
-   npx wrangler login
-   npx wrangler d1 create music-player-db
-   ```
-
-   출력된 `database_id`를 [wrangler.toml](wrangler.toml)의
-   `REPLACE_WITH_D1_DATABASE_ID` 자리에 넣으세요.
-
-2. **원격 D1에 스키마 적용**
+1. **빌드**
 
    ```bash
-   npm run d1:init:remote
+   npm run build
    ```
 
-3. **Pages 프로젝트 생성 및 배포**
+2. **NSSM으로 Windows 서비스 등록** (관리자 권한 PowerShell/CMD 필요)
 
-   ```bash
-   npx wrangler pages project create music-player-app
-   npm run pages:deploy
+   ```powershell
+   nssm install MusicPlayerApp "C:\Program Files\nodejs\node.exe" "D:\안티그래비티\클로드 스킬\music-player-app\server\index.mjs"
+   nssm set MusicPlayerApp AppDirectory "D:\안티그래비티\클로드 스킬\music-player-app"
+   nssm set MusicPlayerApp AppStdout "D:\안티그래비티\클로드 스킬\music-player-app\logs\out.log"
+   nssm set MusicPlayerApp AppStderr "D:\안티그래비티\클로드 스킬\music-player-app\logs\err.log"
+   nssm set MusicPlayerApp Start SERVICE_AUTO_START
+   nssm start MusicPlayerApp
    ```
 
-   이후 Cloudflare 대시보드 → Pages → 프로젝트 → Settings → Functions →
-   D1 database bindings 에서 `DB` 바인딩이 방금 만든 D1 DB를 가리키는지 확인하세요
-   (wrangler.toml 설정이 자동 반영되지 않는 경우가 있어 대시보드에서 한 번 더 확인 권장).
+3. **Cloudflare Tunnel** — 기존 `jarvis-hermes` 터널(`emotion`, `jarvis` 앱과 공유)의
+   `config.yml`에 이미 아래 항목이 추가되어 있고, DNS route(`music.jungsim.org` CNAME)도
+   생성되어 있습니다:
 
-4. **Git 연동으로 자동 배포하려면** GitHub 저장소를 Cloudflare Pages 프로젝트에
-   연결하고, 빌드 명령어는 `npm run build`, 빌드 출력 디렉터리는 `dist`로 설정하세요.
-   D1 바인딩은 대시보드에서 별도로 추가해야 합니다 (wrangler.toml은 로컬/CI 배포에만 사용).
+   ```yaml
+   - hostname: music.jungsim.org
+     service: http://localhost:8791
+   ```
+
+   `cloudflared` 서비스가 꺼져 있으면 (관리자 권한 필요):
+
+   ```powershell
+   Start-Service -Name Cloudflared
+   # 이미 떠 있는데 설정만 바뀐 경우
+   Restart-Service -Name Cloudflared
+   ```
+
+4. **접근 보호 (Zero Trust Access)** — Cloudflare Zero Trust 대시보드 →
+   Access → Applications 에서 `music.jungsim.org`를 등록하고 본인 이메일만
+   허용하는 정책을 추가하세요 (다른 자매 앱들과 동일한 방식). 대시보드 로그인이
+   필요한 단계라 CLI로 자동화하지 않았습니다.
+
+### 코드 수정 후 반영
+
+```bash
+npm run build
+nssm restart MusicPlayerApp
+```
 
 ## 프로젝트 구조
 
@@ -93,8 +114,11 @@ src/
     SongLibrary.tsx
     FileUpload.tsx
   store/useAppStore.ts   전역 상태 (zustand)
-functions/api/            Cloudflare Pages Functions (곡 저장/조회 API)
-schema.sql                 D1 스키마
+server/
+  index.mjs               Express 서버 진입점 (정적 파일 + API)
+  db.mjs                    node:sqlite 기반 곡 저장소
+schema.sql                 SQLite 스키마 (서버 시작 시 자동 적용)
+data/music.db               로컬 SQLite DB 파일 (git 추적 안 함)
 ```
 
 ## 알려진 한계 / 다음 단계 후보
@@ -103,3 +127,4 @@ schema.sql                 D1 스키마
 - 화음(동시에 여러 음)이 있는 곡은 터치 한 번에 여러 음이 같이 울리지만,
   피치벤드/비브라토는 현재 눌려있는 모든 음에 동일하게 적용됩니다.
 - NWC 텍스트 포맷의 임시표 지속, 잇단음표, 멀티 스태프는 근사 처리됩니다.
+- DB는 이 PC 로컬 SQLite 파일 하나뿐이라 백업/다중 기기 동기화는 별도 처리가 필요합니다.
