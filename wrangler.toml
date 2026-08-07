@@ -1,0 +1,8 @@
+name = "music-player-app"
+pages_build_output_dir = "dist"
+compatibility_date = "2026-08-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "music-player-db"
+database_id = "REPLACE_WITH_D1_DATABASE_ID"

@@ -1,0 +1,46 @@
+.circular-play-button {
+  --size: min(60vw, 320px);
+  width: var(--size);
+  height: var(--size);
+  border-radius: 50%;
+  border: none;
+  position: relative;
+  background: radial-gradient(circle at 35% 30%, #6a8dff, #2f4bb3 70%, #1b2c73);
+  box-shadow: 0 10px 30px rgba(30, 40, 100, 0.45), inset 0 -6px 12px rgba(0, 0, 0, 0.25),
+    inset 0 6px 12px rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-family: system-ui, sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  cursor: pointer;
+  touch-action: none;
+  user-select: none;
+  transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+.circular-play-button:active,
+.circular-play-button.pressed {
+  transform: scale(0.94);
+  box-shadow: 0 4px 16px rgba(30, 40, 100, 0.5), inset 0 -4px 10px rgba(0, 0, 0, 0.3),
+    inset 0 4px 10px rgba(255, 255, 255, 0.2);
+}
+
+.circular-play-button.bend-up {
+  background: radial-gradient(circle at 35% 30%, #7fe0a8, #2fa361 70%, #1b6a3c);
+}
+
+.circular-play-button.bend-down {
+  background: radial-gradient(circle at 35% 30%, #ff9a8d, #d8503f 70%, #8a2a1f);
+}
+
+.circular-play-button__ring {
+  position: absolute;
+  inset: 8%;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  pointer-events: none;
+}
+
+.circular-play-button__label {
+  font-size: clamp(1rem, 4vw, 1.4rem);
+}
