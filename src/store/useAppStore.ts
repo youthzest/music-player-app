@@ -1,10 +1,14 @@
 import { create } from "zustand";
 import type { AnalyzedSong } from "../types/music";
 import type { InstrumentId } from "../audio/instruments";
+import type { HarmonyStyle } from "../lib/harmony";
 
 interface AppState {
   instrumentId: InstrumentId;
   setInstrumentId: (id: InstrumentId) => void;
+
+  harmonyStyle: HarmonyStyle;
+  setHarmonyStyle: (style: HarmonyStyle) => void;
 
   currentSong: AnalyzedSong | null;
   setCurrentSong: (song: AnalyzedSong | null) => void;
@@ -23,6 +27,9 @@ interface AppState {
 export const useAppStore = create<AppState>((set) => ({
   instrumentId: "grand-piano",
   setInstrumentId: (id) => set({ instrumentId: id }),
+
+  harmonyStyle: "off",
+  setHarmonyStyle: (harmonyStyle) => set({ harmonyStyle }),
 
   currentSong: null,
   setCurrentSong: (song) => set({ currentSong: song, lastPlayedIndex: null }),
