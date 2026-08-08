@@ -147,6 +147,21 @@
   color: #fff;
 }
 
+.harmony-style-selector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.harmony-style-selector__description {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #8b93c4;
+  text-align: center;
+  max-width: 420px;
+}
+
 .song-library {
   list-style: none;
   margin: 0;

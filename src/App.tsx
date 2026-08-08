@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MelodyPlayer } from "./audio/player";
 import { CircularPlayButton } from "./components/CircularPlayButton";
 import { InstrumentSelector } from "./components/InstrumentSelector";
+import { HarmonyStyleSelector } from "./components/HarmonyStyleSelector";
 import { SongLibrary } from "./components/SongLibrary";
 import { FileUpload } from "./components/FileUpload";
 import { useAppStore } from "./store/useAppStore";
@@ -11,6 +12,7 @@ import "./App.css";
 
 function App() {
   const instrumentId = useAppStore((s) => s.instrumentId);
+  const harmonyStyle = useAppStore((s) => s.harmonyStyle);
   const currentSong = useAppStore((s) => s.currentSong);
   const status = useAppStore((s) => s.status);
 
@@ -20,6 +22,10 @@ function App() {
   useEffect(() => {
     player.setInstrument(instrumentId);
   }, [instrumentId, player]);
+
+  useEffect(() => {
+    player.setHarmonyStyle(harmonyStyle);
+  }, [harmonyStyle, player]);
 
   useEffect(() => {
     if (currentSong) player.loadSong(currentSong);
@@ -48,6 +54,7 @@ function App() {
 
         <section className="app__stage">
           <InstrumentSelector />
+          <HarmonyStyleSelector />
 
           <div className="app__now-playing">
             {lastNote ? (
