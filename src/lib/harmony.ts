@@ -91,7 +91,9 @@ function chordIntervals(key: KeyInfo, degree: number, extension: Extension): num
   const quality = triadQuality(key, degree);
   if (extension === "sus4") return [0, 5, 7];
   if (extension === "add9") {
-    if (quality === "diminished") return [0, 7]; // avoid a muddy dim-add9
+    // dim-add9 는 탁해서 피한다. 다만 [0,7] 로 줄이면 성부가 둘뿐이라
+    // 화음이 비어 들리므로 감3화음 그대로를 쓴다.
+    if (quality === "diminished") return TRIAD_INTERVALS.diminished;
     return [0, TRIAD_INTERVALS[quality][1], 7, 14];
   }
   if (extension === "seventh" || extension === "ninth") {
@@ -107,31 +109,48 @@ function pitchNear(pitchClass: number, target: number): number {
   return pitchClass + 12 * Math.round((target - pitchClass) / 12);
 }
 
-/** Stacks pitch classes upward in close position starting above `floorMidi`, capped at `ceilingMidi`. */
-function stackClose(pitchClasses: number[], floorMidi: number, ceilingMidi: number): number[] {
-  const voices: number[] = [];
-  let prev = floorMidi;
-  for (const pc of pitchClasses) {
-    let candidate = pitchNear(pc, prev);
-    if (candidate <= prev) candidate += 12;
-    while (candidate > ceilingMidi) candidate -= 12;
-    while (candidate <= prev) candidate += 12;
-    voices.push(candidate);
-    prev = candidate;
+// 노트북·휴대폰 스피커는 대략 이 아래를 재생하지 못한다. 보이싱이 이보다 낮게 깔리면
+// 화음이 "안 들려서" 멜로디만 단음으로 나는 것처럼 들린다.
+const MIN_CHORD_MIDI = 45; // A2 (110Hz)
+
+/**
+ * 화음을 근음 위에 음정 구조 그대로 쌓고, 그 덩어리를 옥타브 단위로 옮겨
+ * (1) 최고음이 멜로디보다 반드시 낮고 (2) 가능한 한 들리는 음역에 오도록 배치한다.
+ *
+ * 이전 구현(stackClose)은 성부를 하나씩 올리면서 천장을 넘으면 내리고 다시 올리는
+ * 방식이라, 좁은 구간에서는 마지막 성부가 멜로디 위로 튀어 나가고 같은 음이
+ * 두 번 잡히기도 했다. 간격을 통째로 유지하면 그 두 문제가 같이 사라진다.
+ */
+function voiceChord(rootPc: number, intervals: number[], melodyMidi: number): number[] {
+  const sorted = [...intervals].sort((a, b) => a - b);
+  const span = sorted[sorted.length - 1];
+  let root = pitchNear(rootPc, melodyMidi - 1 - span);
+
+  let guard = 0;
+  while (root + span >= melodyMidi && guard++ < 6) root -= 12;
+  guard = 0;
+  while (root < MIN_CHORD_MIDI && root + 12 + span < melodyMidi && guard++ < 6) root += 12;
+
+  return sorted.map((i) => root + i);
+}
+
+/**
+ * 음정 폭이 넓은 보이싱(9th·오픈 보이싱)은 멜로디가 낮으면 통째로 저역으로 밀려
+ * 들리지 않게 된다. 그럴 때는 확장음을 접은 좁은 보이싱으로 물러난다.
+ */
+function voiceWithFallback(rootPc: number, candidates: number[][], melodyMidi: number): number[] {
+  for (const intervals of candidates) {
+    const voiced = voiceChord(rootPc, intervals, melodyMidi);
+    if (Math.min(...voiced) >= MIN_CHORD_MIDI) return voiced;
   }
-  return voices;
+  return voiceChord(rootPc, candidates[candidates.length - 1], melodyMidi);
 }
 
 function hymnVoicing(key: KeyInfo, degree: number, melodyMidi: number): number[] {
   // Melody note itself is the soprano line; the chord synth only supplies
   // bass/tenor/alto beneath it, close and static like a Bach chorale.
   const rootPc = chordRootPitchClass(key, degree);
-  const [, thirdOffset, fifthOffset] = chordIntervals(key, degree, "triad");
-  const thirdPc = (rootPc + thirdOffset) % 12;
-  const fifthPc = (rootPc + fifthOffset) % 12;
-  const bass = pitchNear(rootPc, melodyMidi - 26);
-  const inner = stackClose([fifthPc, thirdPc], bass, melodyMidi - 1);
-  return [bass, ...inner];
+  return voiceChord(rootPc, chordIntervals(key, degree, "triad"), melodyMidi);
 }
 
 function gospelVoicing(
@@ -141,38 +160,38 @@ function gospelVoicing(
   walk: boolean
 ): { notes: number[]; attackOffsetSec: number } {
   const rootPc = chordRootPitchClass(key, degree);
-  const intervals = chordIntervals(key, degree, "ninth"); // [root, 3rd, 5th, 7th, 9th]
-  const pcs = intervals.map((i) => (rootPc + i) % 12);
+  const [, third, fifth, seventh, ninth] = chordIntervals(key, degree, "ninth");
   // Walking-bass feel: alternate the bass between the root and the fifth
   // (a stand-in passing tone) instead of always hammering the root.
-  const bassPc = walk ? pcs[2] : pcs[0];
-  const bass = pitchNear(bassPc, melodyMidi - 30);
-  const upper = stackClose([pcs[1], pcs[3], pcs[4]], bass, melodyMidi + 4);
-  return { notes: [bass, ...upper], attackOffsetSec: walk ? 0.045 : 0 };
+  // 근음을 5도로 바꿀 때는 나머지 성부를 그 위에 다시 쌓아 자리바꿈처럼 들리게 한다.
+  const shift = walk ? 12 - fifth : 0;
+  const bassPc = walk ? (rootPc + fifth) % 12 : rootPc;
+  const wide = [0, third + shift, seventh + shift, ninth + shift];
+  const narrow = [0, third + shift, seventh + shift];
+  return {
+    notes: voiceWithFallback(bassPc, [wide, narrow], melodyMidi),
+    attackOffsetSec: walk ? 0.045 : 0,
+  };
 }
 
 function worshipVoicing(key: KeyInfo, degree: number, melodyMidi: number): number[] {
   const useSus = degree === 5 || degree === 1;
-  const intervals = chordIntervals(key, degree, useSus ? "sus4" : "add9");
+  const base = chordIntervals(key, degree, useSus ? "sus4" : "add9");
   const rootPc = chordRootPitchClass(key, degree);
-  const pcs = intervals.map((i) => (rootPc + i) % 12);
-  const bass = pitchNear(rootPc, melodyMidi - 36);
-  const mid = pitchNear(pcs[1] ?? rootPc, bass + 19); // wide 12th+ gap for open air
-  const high = pitchNear(pcs[pcs.length - 1] ?? rootPc, melodyMidi - 2);
-  return [bass, mid, high];
+  // 넓게 벌린 오픈 보이싱: 최고 성부를 한 옥타브 띄워 공간감을 만든다.
+  // 멜로디가 낮아 자리가 없으면 좁은 보이싱으로 물러난다.
+  const open = [...base.slice(0, -1), base[base.length - 1] + 12];
+  return voiceWithFallback(rootPc, [open, base], melodyMidi);
 }
 
 function ccliVoicing(key: KeyInfo, degree: number, melodyMidi: number, progress: number): number[] {
   const rootPc = chordRootPitchClass(key, degree);
-  const intervals = chordIntervals(key, degree, "seventh");
-  const pcs = intervals.map((i) => (rootPc + i) % 12);
-  const bass = pitchNear(rootPc, melodyMidi - 28);
-  // Verse -> chorus style build: start with just root+5th, layer in the 3rd
-  // and 7th as the song progresses so the same chord gets denser over time.
-  const layerOrder = [pcs[2], pcs[1], pcs[3]];
-  const layerCount = progress < 0.33 ? 1 : progress < 0.66 ? 2 : 3;
-  const upper = stackClose(layerOrder.slice(0, layerCount), bass, melodyMidi - 1);
-  return [bass, ...upper];
+  const [, third, fifth, seventh] = chordIntervals(key, degree, "seventh");
+  // Verse -> chorus style build: 3화음(근음·3도·5도)은 항상 유지하고,
+  // 곡이 진행될수록 7도를 더해 밀도만 올린다.
+  // (예전에는 앞 절반이 근음+5도 2음뿐이라 화음이 비어 들렸다.)
+  const intervals = progress < 0.5 ? [0, third, fifth] : [0, third, fifth, seventh];
+  return voiceChord(rootPc, intervals, melodyMidi);
 }
 
 export interface HarmonizedChord {
