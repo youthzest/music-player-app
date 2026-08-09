@@ -4,7 +4,8 @@ import { midiToNoteName } from "../types/music";
 import type { InstrumentId } from "./instruments";
 import { buildChordSynth, getInstrumentDef } from "./instruments";
 import { EffectChain, type DelayId, type ReverbId } from "./effects";
-import { harmonizeNote, type HarmonyStyle } from "../lib/harmony";
+import { voiceForStyle, type HarmonyStyle } from "../lib/harmony";
+import { chordAtIndex, type ChordSegment } from "../lib/chordChart";
 
 /** Max continuous pitch bend range in cents (300 = about a whole step),
  * keeping the expressive bend close to the original melody note. */
@@ -30,8 +31,10 @@ export class MelodyPlayer {
   private chordGain: Tone.Gain;
   private chordReverb: Tone.Reverb;
   private harmonyStyle: HarmonyStyle = "off";
-  private lastDegree: number | null = null;
   private activeChordNotes: string[] = [];
+  // 곡 전체를 미리 분석해 만든 코드 진행표. 구간이 바뀔 때만 화음을 새로 친다.
+  private chart: ChordSegment[] = [];
+  private activeSegment: ChordSegment | null = null;
 
   constructor(instrumentId: InstrumentId = "grand-piano") {
     this.instrumentId = instrumentId;
@@ -71,12 +74,19 @@ export class MelodyPlayer {
     this.effects.setChorus(on);
   }
 
+  /** 미리 계산된 코드 진행표를 갈아끼운다. 곡이나 스타일이 바뀔 때 호출한다. */
+  setChordChart(chart: ChordSegment[]) {
+    this.chart = chart;
+    this.releaseChord();
+    this.activeSegment = null;
+  }
+
   /** Selects which chord-accompaniment style plays under the melody ("off" = melody only). */
   setHarmonyStyle(style: HarmonyStyle) {
     if (style === this.harmonyStyle) return;
     this.releaseChord();
+    this.activeSegment = null;
     this.harmonyStyle = style;
-    this.lastDegree = null;
     if (style === "off") return;
 
     this.chordSynth.disconnect();
@@ -101,7 +111,7 @@ export class MelodyPlayer {
     this.stopAuto();
     this.song = song;
     this.index = 0;
-    this.lastDegree = null;
+    this.activeSegment = null;
   }
 
   get currentIndex() {
@@ -112,10 +122,38 @@ export class MelodyPlayer {
     return this.song?.notes.length ?? 0;
   }
 
-  private releaseChord() {
+  private releaseChord(at?: number) {
     if (this.activeChordNotes.length === 0) return;
-    this.chordSynth.triggerRelease(this.activeChordNotes, Tone.now());
+    this.chordSynth.triggerRelease(this.activeChordNotes, at ?? Tone.now());
     this.activeChordNotes = [];
+  }
+
+  /**
+   * 이 음표가 속한 코드 구간을 찾아, 구간이 바뀐 경우에만 화음을 새로 친다.
+   * 음마다 다시 치지 않으므로 한 코드가 마디 내내 지속된다.
+   */
+  private applyChordFor(noteIndex: number, melodyMidi: number, at: number) {
+    if (this.harmonyStyle === "off" || this.chart.length === 0) return;
+
+    const segment = chordAtIndex(this.chart, noteIndex);
+    if (segment === this.activeSegment) return;
+
+    this.releaseChord(at);
+    this.activeSegment = segment;
+    if (!segment) return;
+
+    const names = voiceForStyle(
+      this.harmonyStyle,
+      segment.rootPc,
+      segment.intervals,
+      melodyMidi
+    ).map(midiToNoteName);
+    if (names.length === 0) return;
+
+    // 가스펠은 코드가 바뀌는 순간을 살짝 뒤로 밀어 당겨지는 느낌을 준다.
+    const offset = this.harmonyStyle === "gospel" ? 0.045 : 0;
+    this.chordSynth.triggerAttack(names, at + offset, 0.5);
+    this.activeChordNotes = names;
   }
 
   /**
@@ -139,18 +177,7 @@ export class MelodyPlayer {
 
     const duration = Math.min(note.duration / this.speed || gap, gap * 0.95);
 
-    if (this.harmonyStyle !== "off") {
-      const chord = harmonizeNote(this.song, index, this.harmonyStyle, this.lastDegree);
-      if (chord) {
-        this.lastDegree = chord.degree;
-        this.chordSynth.triggerAttackRelease(
-          chord.notes.map(midiToNoteName),
-          duration,
-          at + chord.attackOffsetSec,
-          0.5
-        );
-      }
-    }
+    this.applyChordFor(index, note.midi, at);
 
     this.synth.triggerAttackRelease(
       midiToNoteName(note.midi),
@@ -188,6 +215,7 @@ export class MelodyPlayer {
     this.synth.releaseAll();
     this.chordSynth.releaseAll();
     this.activeChordNotes = [];
+    this.activeSegment = null;
     this.activeNote = null;
   }
 
@@ -203,16 +231,7 @@ export class MelodyPlayer {
     this.synth.set({ detune: 0 } as any);
     this.vibrato.depth.value = 0;
 
-    this.releaseChord();
-    if (this.harmonyStyle !== "off") {
-      const chord = harmonizeNote(this.song, playedIndex, this.harmonyStyle, this.lastDegree);
-      if (chord) {
-        this.lastDegree = chord.degree;
-        const names = chord.notes.map(midiToNoteName);
-        this.chordSynth.triggerAttack(names, Tone.now() + chord.attackOffsetSec, 0.5);
-        this.activeChordNotes = names;
-      }
-    }
+    this.applyChordFor(playedIndex, note.midi, Tone.now());
 
     this.synth.triggerAttack(midiToNoteName(note.midi), Tone.now(), note.velocity || 0.8);
     this.activeNote = note;
@@ -232,7 +251,7 @@ export class MelodyPlayer {
   }
 
   release() {
-    this.releaseChord();
+    // 반주는 손을 떼도 그 코드 구간이 끝날 때까지 이어진다(패드처럼 받쳐주는 역할).
     if (!this.activeNote) return;
     this.synth.triggerRelease(midiToNoteName(this.activeNote.midi), Tone.now());
     this.synth.set({ detune: 0 } as any);
@@ -242,7 +261,7 @@ export class MelodyPlayer {
 
   reset() {
     this.index = 0;
-    this.lastDegree = null;
+    this.activeSegment = null;
     this.releaseChord();
   }
 

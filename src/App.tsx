@@ -8,8 +8,10 @@ import { SongLibrary } from "./components/SongLibrary";
 import { SoundPanel } from "./components/SoundPanel";
 import { Prompter } from "./components/Prompter";
 import { CatalogSearch } from "./components/CatalogSearch";
+import { ChordChartStrip } from "./components/ChordChartStrip";
 import { FileUpload } from "./components/FileUpload";
 import { useAppStore } from "./store/useAppStore";
+import { analyzeChordChart } from "./lib/chordChart";
 import { midiToNoteName } from "./types/music";
 import type { AnalyzedNote } from "./types/music";
 import "./App.css";
@@ -27,6 +29,12 @@ function App() {
   const playbackSpeed = useAppStore((s) => s.playbackSpeed);
 
   const player = useMemo(() => new MelodyPlayer(instrumentId), []);
+
+  // 곡이나 스타일이 바뀌면 곡 전체를 다시 분석해 코드 진행표를 만든다.
+  const chordChart = useMemo(
+    () => (currentSong ? analyzeChordChart(currentSong, harmonyStyle) : []),
+    [currentSong, harmonyStyle]
+  );
   const [lastNote, setLastNote] = useState<AnalyzedNote | null>(null);
   const [lastIndex, setLastIndex] = useState<number | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(true);
@@ -50,6 +58,10 @@ function App() {
   useEffect(() => {
     player.setHarmonyStyle(harmonyStyle);
   }, [harmonyStyle, player]);
+
+  useEffect(() => {
+    player.setChordChart(chordChart);
+  }, [chordChart, player]);
 
   useEffect(() => {
     player.setSpeed(playbackSpeed);
@@ -115,6 +127,10 @@ function App() {
           <InstrumentSelector />
           <HarmonyStyleSelector />
           <SoundPanel />
+
+          {chordChart.length > 0 && (
+            <ChordChartStrip chart={chordChart} currentIndex={lastIndex} />
+          )}
 
           <div className="app__now-playing">
             {lastNote ? (
