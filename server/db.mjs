@@ -12,6 +12,15 @@ mkdirSync(dataDir, { recursive: true });
 export const db = new DatabaseSync(dbPath);
 db.exec(readFileSync(schemaPath, "utf-8"));
 
+// schema.sql 의 CREATE TABLE IF NOT EXISTS 는 이미 만들어진 테이블에 새 컬럼을
+// 추가해주지 않는다. 기존 DB 를 위해 빠진 컬럼만 따로 붙인다.
+{
+  const columns = db.prepare("PRAGMA table_info(songs)").all().map((c) => c.name);
+  if (!columns.includes("lyrics")) {
+    db.exec("ALTER TABLE songs ADD COLUMN lyrics TEXT");
+  }
+}
+
 const PITCH_CLASS_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
 export function rowToSong(row) {
@@ -30,6 +39,7 @@ export function rowToSong(row) {
     durationSeconds: row.duration_seconds,
     sourceFormat: row.source_format,
     notes: JSON.parse(row.notes_json),
+    lyrics: row.lyrics ?? undefined,
     createdAt: row.created_at,
   };
 }
@@ -48,8 +58,8 @@ export function insertSong(song) {
   const id = crypto.randomUUID();
   db.prepare(
     `INSERT INTO songs
-      (id, title, tempo, time_sig_num, time_sig_den, key_tonic, key_mode, key_label, key_confidence, duration_seconds, source_format, notes_json)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, title, tempo, time_sig_num, time_sig_den, key_tonic, key_mode, key_label, key_confidence, duration_seconds, source_format, notes_json, lyrics)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   ).run(
     id,
     song.title,
@@ -62,9 +72,15 @@ export function insertSong(song) {
     song.key.confidence,
     song.durationSeconds,
     song.sourceFormat,
-    JSON.stringify(song.notes)
+    JSON.stringify(song.notes),
+    song.lyrics ?? null
   );
   return id;
+}
+
+export function updateLyrics(id, lyrics) {
+  const res = db.prepare("UPDATE songs SET lyrics = ? WHERE id = ?").run(lyrics || null, id);
+  return res.changes > 0;
 }
 
 export function deleteSong(id) {

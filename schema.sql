@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS songs (
   duration_seconds REAL NOT NULL,
   source_format TEXT NOT NULL,
   notes_json TEXT NOT NULL,
+  lyrics TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 

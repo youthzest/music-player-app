@@ -1,4 +1,5 @@
 import type { ParsedNote, ParsedSong } from "../types/music";
+import { decodeTextFile } from "./textDecode";
 
 // Parser for Noteworthy Composer's text clip format (.nwctxt), which is the
 // only NWC variant that is actually documented/plain-text — the binary .nwc
@@ -50,6 +51,39 @@ function parseFields(line: string): { type: string; fields: Record<string, strin
     }
   }
   return { type, fields };
+}
+
+/** NWC 텍스트 필드의 이스케이프를 푼다. 값은 따옴표로 감싸여 있고 줄바꿈은 \n 으로 들어온다. */
+function unescapeNwcText(raw: string): string {
+  const inner = raw.replace(/^"/, "").replace(/"$/, "");
+  return inner.replace(/\\(.)/g, (_, c: string) => (c === "n" ? "\n" : c === "r" ? "" : c));
+}
+
+/**
+ * 첫 스태프에 붙은 가사를 뽑는다. |Lyric1|, |Lyric2| ... 는 절(verse)이며
+ * 비어 있는 절이 있을 수 있어 내용이 있는 첫 절을 쓴다.
+ * 음절은 공백으로 구분되고 토큰 하나가 음표 하나에 대응한다("-" 는 이어짐 표시).
+ */
+function extractLyrics(lines: string[]): string | undefined {
+  const verses = new Map<number, string>();
+  let staffCount = 0;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (line.startsWith("|AddStaff")) {
+      staffCount++;
+      if (staffCount > 1) break; // 첫 스태프의 가사만 쓴다
+      continue;
+    }
+    const m = line.match(/^\|Lyric(\d+)\|Text:(.*)$/);
+    if (!m) continue;
+    const text = unescapeNwcText(m[2]).trim();
+    if (text) verses.set(parseInt(m[1], 10), text);
+  }
+
+  if (verses.size === 0) return undefined;
+  const firstVerse = Math.min(...verses.keys());
+  return verses.get(firstVerse);
 }
 
 function parseKeySignature(sig: string | undefined): Record<string, number> {
@@ -110,10 +144,16 @@ function posToMidi(pos: PosPitch, clefRef: ClefRef, keyMap: Record<string, numbe
 }
 
 export async function parseNwcTextFile(file: File): Promise<ParsedSong> {
-  const text = await file.text();
+  // file.text() 는 항상 UTF-8 로 디코딩하므로 CP949 로 저장된 파일이 깨진다.
+  const text = await decodeTextFile(file);
+  return parseNwcText(text, file.name.replace(/\.[^/.]+$/, ""));
+}
+
+/** 이미 디코딩된 NWCTXT 문자열을 파싱한다. 서버에서 변환해 온 .nwc 도 이 경로를 탄다. */
+export function parseNwcText(text: string, fallbackTitle: string): ParsedSong {
   const lines = text.split(/\r?\n/);
 
-  let title = file.name.replace(/\.[^/.]+$/, "");
+  let title = fallbackTitle;
   let tempo = 120;
   let numerator = 4;
   let denominator = 4;
@@ -121,6 +161,7 @@ export async function parseNwcTextFile(file: File): Promise<ParsedSong> {
   let clefRef: ClefRef = CLEF_REFS.Treble;
   let keyMap: Record<string, number> = {};
   let inStaff = false;
+  let staffCount = 0;
   let beatPos = 0; // running position in quarter-note beats
   const notes: ParsedNote[] = [];
 
@@ -130,6 +171,16 @@ export async function parseNwcTextFile(file: File): Promise<ParsedSong> {
     const line = rawLine.trim();
     if (!line) continue;
     const { type, fields } = parseFields(line);
+
+    // 클립 형식(.nwctxt 조각)은 |Staff| 로 악보를 열지만, 파일 전체를 텍스트로
+    // 저장하면 |AddStaff| 가 대신 쓰인다. 둘 다 받아야 실제 파일이 파싱된다.
+    // 멜로디 한 줄만 필요하므로 두 번째 스태프가 시작되면 읽기를 멈춘다.
+    if (type === "AddStaff") {
+      staffCount++;
+      if (staffCount > 1) break;
+      inStaff = true;
+      continue;
+    }
 
     switch (type) {
       case "SongInfo":
@@ -218,6 +269,7 @@ export async function parseNwcTextFile(file: File): Promise<ParsedSong> {
     notes,
     durationSeconds,
     sourceFormat: "nwctxt",
+    lyrics: extractLyrics(lines),
   };
 }
 
