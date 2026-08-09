@@ -15,9 +15,14 @@ export type ChordQuality =
   | "sus2"
   | "sus4"
   | "add9"
+  | "two"
   | "maj7"
   | "min7"
-  | "dom7";
+  | "dom7"
+  | "maj9"
+  | "min9"
+  | "min11"
+  | "dom13";
 
 interface QualitySpec {
   /** 근음 기준 반음 간격 */
@@ -35,17 +40,76 @@ export const QUALITY_SPECS: Record<ChordQuality, QualitySpec> = {
   sus2: { intervals: [0, 2, 7], suffix: "sus2", complexity: 0.5 },
   sus4: { intervals: [0, 5, 7], suffix: "sus4", complexity: 0.5 },
   add9: { intervals: [0, 4, 7, 14], suffix: "add9", complexity: 0.7 },
+  // 3음을 비우고 9음을 얹은 오픈 코드. 워십 악보에서 G2 로 표기한다.
+  two: { intervals: [0, 7, 14], suffix: "2", complexity: 0.8 },
   maj7: { intervals: [0, 4, 7, 11], suffix: "M7", complexity: 0.6 },
   min7: { intervals: [0, 3, 7, 10], suffix: "m7", complexity: 0.6 },
   dom7: { intervals: [0, 4, 7, 10], suffix: "7", complexity: 0.6 },
+  maj9: { intervals: [0, 4, 7, 11, 14], suffix: "M9", complexity: 1.0 },
+  min9: { intervals: [0, 3, 7, 10, 14], suffix: "m9", complexity: 1.0 },
+  min11: { intervals: [0, 3, 7, 10, 17], suffix: "m11", complexity: 1.1 },
+  dom13: { intervals: [0, 4, 7, 10, 21], suffix: "13", complexity: 1.1 },
 };
 
+interface StyleHarmony {
+  vocabulary: ChordQuality[];
+  /**
+   * 그 스타일의 간판 코드. 가산점을 줘서 실제로 자주 등장하게 만든다.
+   * 이게 없으면 복잡도 감점 때문에 텐션 코드가 늘 단순 3화음에 밀린다.
+   */
+  favor: ChordQuality[];
+  /** 분수코드(D/F#) 를 만들지 */
+  inversions: boolean;
+}
+
 /** 스타일마다 쓰는 코드 어휘가 다르다. 찬송가에 sus2 가 나오면 어색하다. */
-const STYLE_VOCABULARY: Record<Exclude<HarmonyStyle, "off">, ChordQuality[]> = {
-  hymn: ["maj", "min", "dim"],
-  gospel: ["maj", "min", "maj7", "min7", "dom7"],
-  worship: ["maj", "min", "sus2", "sus4", "add9"],
-  ccli: ["maj", "min", "sus4", "add9", "maj7", "min7", "dom7"],
+const STYLE_HARMONY: Record<Exclude<HarmonyStyle, "off">, StyleHarmony> = {
+  hymn: { vocabulary: ["maj", "min", "dim"], favor: [], inversions: false },
+  gospel: {
+    vocabulary: ["maj", "min", "maj7", "min7", "dom7"],
+    favor: ["maj7", "min7", "dom7"],
+    inversions: false,
+  },
+  worship: {
+    vocabulary: ["maj", "min", "sus2", "sus4", "add9"],
+    favor: ["sus4", "sus2"],
+    inversions: false,
+  },
+  ccli: {
+    vocabulary: ["maj", "min", "sus4", "add9", "maj7", "min7", "dom7"],
+    favor: ["add9", "min7"],
+    inversions: false,
+  },
+  // 힐송 — Dadd9 / Asus4 / Bm7 / Gadd9. sus4 를 앞세우고 분수코드는 쓰지 않는다.
+  hillsong: {
+    vocabulary: ["maj", "add9", "sus4", "min7"],
+    favor: ["add9", "min7"],
+    inversions: false,
+  },
+  // 벧엘 — DM7 / Bm11 / G2. 3음을 비운 코드가 이 스타일의 색이다.
+  bethel: {
+    vocabulary: ["maj7", "min11", "two", "add9", "min7"],
+    favor: ["maj7", "min11", "two"],
+    inversions: false,
+  },
+  // 제이어스 — Dadd9 / D/F# / Bm7. sus 없이 담백하게 가고 베이스가 움직인다.
+  jesusimage: {
+    vocabulary: ["maj", "add9", "min7"],
+    favor: ["add9"],
+    inversions: true,
+  },
+  // 마커스 — Dsus2 / Gadd9 / Bm7
+  marcus: {
+    vocabulary: ["maj", "sus2", "add9", "min7"],
+    favor: ["sus2", "add9"],
+    inversions: false,
+  },
+  // 재즈 워십 — DM9 / Em9 / A13
+  jazz: {
+    vocabulary: ["maj9", "min9", "dom13", "min7", "maj7"],
+    favor: ["maj9", "min9", "dom13"],
+    inversions: true,
+  },
 };
 
 export interface ChordSegment {
@@ -57,7 +121,9 @@ export interface ChordSegment {
   endIndex: number;
   rootPc: number;
   quality: ChordQuality;
-  /** 화면에 표시할 코드네임 — "C", "Am", "Csus4" ... */
+  /** 분수코드일 때의 베이스 음. 근음과 같으면 일반 코드. */
+  bassPc: number;
+  /** 화면에 표시할 코드네임 — "C", "Am", "Csus4", "D/F#" ... */
   label: string;
   intervals: number[];
 }
@@ -96,23 +162,35 @@ function candidatesForKey(key: KeyInfo, vocabulary: ChordQuality[]): Candidate2[
   const allowed = new Set(vocabulary);
   const triads = key.mode === "minor" ? MINOR_DEGREE_TRIAD : MAJOR_DEGREE_TRIAD;
   const sevenths = key.mode === "minor" ? MINOR_DEGREE_SEVENTH : MAJOR_DEGREE_SEVENTH;
+  const inScale = (rootPc: number, interval: number) => pcs.has((rootPc + interval) % 12);
 
   const out: Candidate2[] = [];
+  const push = (rootPc: number, quality: ChordQuality) => {
+    if (allowed.has(quality)) out.push({ rootPc, quality });
+  };
+
   for (let d = 0; d < 7; d++) {
     const rootPc = (key.tonic + scale[d]) % 12;
     const triad = triads[d];
-    if (allowed.has(triad)) out.push({ rootPc, quality: triad });
-
     const seventh = sevenths[d];
-    if (seventh && allowed.has(seventh)) out.push({ rootPc, quality: seventh });
+    push(rootPc, triad);
+    if (seventh) push(rootPc, seventh);
 
-    if (triad === "dim") continue; // 감화음에는 sus/add9 를 붙이지 않는다
-    // sus2·sus4·add9 는 덧붙는 음까지 조성 안에 있을 때만 허용한다.
-    if (allowed.has("sus2") && pcs.has((rootPc + 2) % 12)) out.push({ rootPc, quality: "sus2" });
-    if (allowed.has("sus4") && pcs.has((rootPc + 5) % 12)) out.push({ rootPc, quality: "sus4" });
-    if (allowed.has("add9") && triad === "maj" && pcs.has((rootPc + 2) % 12)) {
-      out.push({ rootPc, quality: "add9" });
+    if (triad === "dim") continue; // 감화음에는 sus·텐션을 붙이지 않는다
+
+    // 덧붙는 음까지 조성 안에 있을 때만 허용한다. 그래야 코드표가 조성을 벗어나지 않는다.
+    if (inScale(rootPc, 2)) {
+      push(rootPc, "sus2");
+      push(rootPc, "two");
+      if (triad === "maj") push(rootPc, "add9");
     }
+    if (inScale(rootPc, 5)) push(rootPc, "sus4");
+
+    // 9th·11th·13th 텐션은 해당 7화음이 성립하는 도수에서만 쓴다.
+    if (seventh === "maj7" && inScale(rootPc, 2)) push(rootPc, "maj9");
+    if (seventh === "min7" && inScale(rootPc, 2)) push(rootPc, "min9");
+    if (seventh === "min7" && inScale(rootPc, 5)) push(rootPc, "min11");
+    if (seventh === "dom7" && inScale(rootPc, 9)) push(rootPc, "dom13");
   }
   return out;
 }
@@ -149,6 +227,7 @@ function scoreSegment(
   bassPc: number | null,
   key: KeyInfo,
   candidates: Candidate2[],
+  favor: Set<ChordQuality>,
   prev: Candidate | null
 ): Candidate | null {
   if (totalWeight <= 0) return null;
@@ -171,6 +250,8 @@ function scoreSegment(
     if (bassPc !== null && tones.has(bassPc)) score += 0.25;
     score += functionalBonus(key, rootPc);
     score -= spec.complexity * 0.12;
+    // 스타일 간판 코드는 복잡도 감점을 상쇄하고도 남을 만큼 밀어준다.
+    if (favor.has(quality)) score += 0.32;
     // 앞 구간과 같은 화음이면 우대해서 진행이 덜 흔들리게 한다.
     // 실제 악보도 한 코드를 여러 마디 끄는 경우가 많다.
     if (prev && prev.rootPc === rootPc && prev.quality === quality) score += 0.4;
@@ -187,8 +268,10 @@ function scoreSegment(
 export function analyzeChordChart(song: AnalyzedSong, style: HarmonyStyle): ChordSegment[] {
   if (style === "off" || song.notes.length === 0) return [];
 
-  const candidates = candidatesForKey(song.key, STYLE_VOCABULARY[style]);
+  const styleHarmony = STYLE_HARMONY[style];
+  const candidates = candidatesForKey(song.key, styleHarmony.vocabulary);
   if (candidates.length === 0) return [];
+  const favor = new Set(styleHarmony.favor);
   // 반마디마다 후보를 뽑는다. 마디당 코드가 둘인 곡도 잡아내되,
   // 결과가 같으면 아래에서 다시 합쳐지므로 과하게 쪼개지지 않는다.
   const step = measureSeconds(song) / 2;
@@ -224,7 +307,7 @@ export function analyzeChordChart(song: AnalyzedSong, style: HarmonyStyle): Chor
 
     if (totalWeight <= 0) continue;
 
-    const best = scoreSegment(weights, totalWeight, bassPc, song.key, candidates, prev);
+    const best = scoreSegment(weights, totalWeight, bassPc, song.key, candidates, favor, prev);
     if (!best) continue;
     prev = best;
 
@@ -236,6 +319,7 @@ export function analyzeChordChart(song: AnalyzedSong, style: HarmonyStyle): Chor
       endIndex,
       rootPc: best.rootPc,
       quality: best.quality,
+      bassPc: best.rootPc,
       label: `${PITCH_CLASS_NAMES[best.rootPc]}${spec.suffix}`,
       intervals: spec.intervals,
     });
@@ -252,7 +336,32 @@ export function analyzeChordChart(song: AnalyzedSong, style: HarmonyStyle): Chor
       merged.push({ ...seg });
     }
   }
+  if (styleHarmony.inversions) applyInversions(merged);
   return merged;
+}
+
+/**
+ * 분수코드(D/F#) 후처리.
+ *
+ * 다음 코드의 근음이 이 코드의 3음 바로 위/아래라면 3음을 베이스로 내려서
+ * 베이스가 계단처럼 이어지게 만든다. 제이어스·힐송 반주에서 흔한 움직임이다.
+ * (예: D - G 사이에 D/F# 를 두면 베이스가 D-F#-G 로 올라간다.)
+ */
+function applyInversions(chart: ChordSegment[]): void {
+  for (let i = 0; i < chart.length - 1; i++) {
+    const seg = chart[i];
+    const next = chart[i + 1];
+    // 3음이 있는 화음에만 적용한다(sus·2 코드는 3음이 없다).
+    const third = seg.intervals.find((iv) => iv === 3 || iv === 4);
+    if (third === undefined) continue;
+
+    const thirdPc = (seg.rootPc + third) % 12;
+    const gap = ((next.rootPc - thirdPc) % 12 + 12) % 12;
+    if (gap !== 1 && gap !== 2) continue;
+
+    seg.bassPc = thirdPc;
+    seg.label = `${seg.label}/${PITCH_CLASS_NAMES[thirdPc]}`;
+  }
 }
 
 /** 해당 음표 인덱스가 속한 코드 구간을 찾는다. */

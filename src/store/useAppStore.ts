@@ -1,21 +1,25 @@
 import { create } from "zustand";
 import type { AnalyzedSong } from "../types/music";
 import type { InstrumentId } from "../audio/instruments";
-import type { DelayId, ReverbId } from "../audio/effects";
+import type { DelayId, SpaceId } from "../audio/spaces";
 import type { HarmonyStyle } from "../lib/harmony";
 
 interface AppState {
   instrumentId: InstrumentId;
   setInstrumentId: (id: InstrumentId) => void;
 
-  reverbId: ReverbId;
-  setReverbId: (id: ReverbId) => void;
+  spaceId: SpaceId;
+  setSpaceId: (id: SpaceId) => void;
 
   delayId: DelayId;
   setDelayId: (id: DelayId) => void;
 
   chorusOn: boolean;
   setChorusOn: (on: boolean) => void;
+
+  /** 0~100. 멜로디를 앞으로 끌어내는 정도 */
+  melodyFocus: number;
+  setMelodyFocus: (v: number) => void;
 
   harmonyStyle: HarmonyStyle;
   setHarmonyStyle: (style: HarmonyStyle) => void;
@@ -42,18 +46,21 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set) => ({
-  instrumentId: "grand-piano",
+  instrumentId: "piano-worship",
   setInstrumentId: (id) => set({ instrumentId: id }),
 
-  // 기본값으로 옅은 룸 리버브를 걸어둔다. 완전 드라이한 신스가 가장 인위적으로 들린다.
-  reverbId: "room",
-  setReverbId: (id) => set({ reverbId: id }),
+  // 완전 드라이한 신스가 가장 인위적으로 들리므로 기본은 예배당 공간으로 둔다.
+  spaceId: "worship-hall",
+  setSpaceId: (id) => set({ spaceId: id }),
 
   delayId: "off",
   setDelayId: (id) => set({ delayId: id }),
 
   chorusOn: false,
   setChorusOn: (on) => set({ chorusOn: on }),
+
+  melodyFocus: 60,
+  setMelodyFocus: (v) => set({ melodyFocus: v }),
 
   harmonyStyle: "off",
   setHarmonyStyle: (harmonyStyle) => set({ harmonyStyle }),

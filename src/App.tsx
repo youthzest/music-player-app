@@ -12,6 +12,7 @@ import { ChordChartStrip } from "./components/ChordChartStrip";
 import { FileUpload } from "./components/FileUpload";
 import { useAppStore } from "./store/useAppStore";
 import { analyzeChordChart } from "./lib/chordChart";
+import { getDelay } from "./audio/spaces";
 import { midiToNoteName } from "./types/music";
 import type { AnalyzedNote } from "./types/music";
 import "./App.css";
@@ -21,9 +22,10 @@ function App() {
   const harmonyStyle = useAppStore((s) => s.harmonyStyle);
   const currentSong = useAppStore((s) => s.currentSong);
   const status = useAppStore((s) => s.status);
-  const reverbId = useAppStore((s) => s.reverbId);
+  const spaceId = useAppStore((s) => s.spaceId);
   const delayId = useAppStore((s) => s.delayId);
   const chorusOn = useAppStore((s) => s.chorusOn);
+  const melodyFocus = useAppStore((s) => s.melodyFocus);
   const autoPlay = useAppStore((s) => s.autoPlay);
   const setAutoPlay = useAppStore((s) => s.setAutoPlay);
   const playbackSpeed = useAppStore((s) => s.playbackSpeed);
@@ -44,12 +46,17 @@ function App() {
   }, [instrumentId, player]);
 
   useEffect(() => {
-    player.setReverb(reverbId);
-  }, [reverbId, player]);
+    player.setSpace(spaceId);
+  }, [spaceId, player]);
 
   useEffect(() => {
-    player.setDelay(delayId);
+    const d = getDelay(delayId);
+    player.setDelay(d.wet, d.delayTime, d.feedback);
   }, [delayId, player]);
+
+  useEffect(() => {
+    player.setMelodyFocus(melodyFocus);
+  }, [melodyFocus, player]);
 
   useEffect(() => {
     player.setChorus(chorusOn);
