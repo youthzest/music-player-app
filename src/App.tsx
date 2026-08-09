@@ -3,6 +3,7 @@ import * as Tone from "tone";
 import { MelodyPlayer } from "./audio/player";
 import { CircularPlayButton } from "./components/CircularPlayButton";
 import { InstrumentSelector } from "./components/InstrumentSelector";
+import { HarmonyStyleSelector } from "./components/HarmonyStyleSelector";
 import { SongLibrary } from "./components/SongLibrary";
 import { SoundPanel } from "./components/SoundPanel";
 import { Prompter } from "./components/Prompter";
@@ -15,12 +16,12 @@ import "./App.css";
 
 function App() {
   const instrumentId = useAppStore((s) => s.instrumentId);
+  const harmonyStyle = useAppStore((s) => s.harmonyStyle);
   const currentSong = useAppStore((s) => s.currentSong);
   const status = useAppStore((s) => s.status);
   const reverbId = useAppStore((s) => s.reverbId);
   const delayId = useAppStore((s) => s.delayId);
   const chorusOn = useAppStore((s) => s.chorusOn);
-  const harmonyMode = useAppStore((s) => s.harmonyMode);
   const autoPlay = useAppStore((s) => s.autoPlay);
   const setAutoPlay = useAppStore((s) => s.setAutoPlay);
   const playbackSpeed = useAppStore((s) => s.playbackSpeed);
@@ -47,8 +48,8 @@ function App() {
   }, [chorusOn, player]);
 
   useEffect(() => {
-    player.setHarmonyMode(harmonyMode);
-  }, [harmonyMode, player]);
+    player.setHarmonyStyle(harmonyStyle);
+  }, [harmonyStyle, player]);
 
   useEffect(() => {
     player.setSpeed(playbackSpeed);
@@ -112,6 +113,7 @@ function App() {
 
         <section className="app__stage">
           <InstrumentSelector />
+          <HarmonyStyleSelector />
           <SoundPanel />
 
           <div className="app__now-playing">

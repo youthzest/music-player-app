@@ -2,9 +2,9 @@ import * as Tone from "tone";
 import type { AnalyzedNote, AnalyzedSong } from "../types/music";
 import { midiToNoteName } from "../types/music";
 import type { InstrumentId } from "./instruments";
-import { getInstrumentDef } from "./instruments";
+import { buildChordSynth, getInstrumentDef } from "./instruments";
 import { EffectChain, type DelayId, type ReverbId } from "./effects";
-import { chordForMelodyNote, resolveHarmonyMode, type HarmonyMode } from "./harmony";
+import { harmonizeNote, type HarmonyStyle } from "../lib/harmony";
 
 /** Max continuous pitch bend range in cents (300 = about a whole step),
  * keeping the expressive bend close to the original melody note. */
@@ -14,18 +14,24 @@ export const VIBRATO_RATE_HZ = 6;
 
 export class MelodyPlayer {
   private synth: Tone.PolySynth;
-  private harmonySynth: Tone.PolySynth;
   private vibrato: Tone.Vibrato;
   private effects: EffectChain;
   private instrumentId: InstrumentId;
   private song: AnalyzedSong | null = null;
   private index = 0;
   private activeNote: AnalyzedNote | null = null;
-  private activeChord: string[] = [];
-  private harmonyMode: HarmonyMode = "off";
   private auto = false;
   private autoTimer: ReturnType<typeof setTimeout> | null = null;
   private speed = 1;
+
+  // 반주는 멜로디와 분리된 신스/리버브로 낸다. 스타일마다 음색과 잔향이 다르기 때문에
+  // 멜로디용 이펙트 체인에 섞지 않고 따로 둔다.
+  private chordSynth: Tone.PolySynth;
+  private chordGain: Tone.Gain;
+  private chordReverb: Tone.Reverb;
+  private harmonyStyle: HarmonyStyle = "off";
+  private lastDegree: number | null = null;
+  private activeChordNotes: string[] = [];
 
   constructor(instrumentId: InstrumentId = "grand-piano") {
     this.instrumentId = instrumentId;
@@ -38,13 +44,10 @@ export class MelodyPlayer {
     this.synth = getInstrumentDef(instrumentId).build();
     this.synth.connect(this.vibrato);
 
-    // 반주는 멜로디를 가리지 않도록 부드럽고 작게.
-    this.harmonySynth = new Tone.PolySynth(Tone.Synth, {
-      oscillator: { type: "triangle" },
-      envelope: { attack: 0.12, decay: 0.6, sustain: 0.45, release: 1.4 },
-      volume: -14,
-    });
-    this.harmonySynth.connect(this.effects.input);
+    this.chordGain = new Tone.Gain(0.45).toDestination();
+    this.chordReverb = new Tone.Reverb({ decay: 2.5, wet: 0.2 }).connect(this.chordGain);
+    this.chordSynth = buildChordSynth("hymn");
+    this.chordSynth.connect(this.chordReverb);
   }
 
   setInstrument(id: InstrumentId) {
@@ -68,10 +71,21 @@ export class MelodyPlayer {
     this.effects.setChorus(on);
   }
 
-  /** 연주 도중에도 바꿀 수 있다. 다음 음부터 새 화음 모드가 적용된다. */
-  setHarmonyMode(mode: HarmonyMode) {
-    this.harmonyMode = mode;
-    if (mode === "off") this.releaseChord();
+  /** Selects which chord-accompaniment style plays under the melody ("off" = melody only). */
+  setHarmonyStyle(style: HarmonyStyle) {
+    if (style === this.harmonyStyle) return;
+    this.releaseChord();
+    this.harmonyStyle = style;
+    this.lastDegree = null;
+    if (style === "off") return;
+
+    this.chordSynth.disconnect();
+    this.chordSynth.dispose();
+    this.chordSynth = buildChordSynth(style);
+    this.chordSynth.connect(this.chordReverb);
+    this.chordReverb.wet.value =
+      style === "worship" ? 0.4 : style === "hymn" ? 0.3 : style === "ccli" ? 0.25 : 0.12;
+    this.chordGain.gain.value = style === "gospel" ? 0.55 : 0.45;
   }
 
   /** 자동 재생 배속. 0.25~2.0. 다음 음부터 즉시 반영된다. */
@@ -87,6 +101,7 @@ export class MelodyPlayer {
     this.stopAuto();
     this.song = song;
     this.index = 0;
+    this.lastDegree = null;
   }
 
   get currentIndex() {
@@ -98,17 +113,9 @@ export class MelodyPlayer {
   }
 
   private releaseChord() {
-    if (this.activeChord.length === 0) return;
-    this.harmonySynth.triggerRelease(this.activeChord, Tone.now());
-    this.activeChord = [];
-  }
-
-  /** 현재 음에 깔 3화음. 화음이 꺼져 있으면 빈 배열. */
-  private chordFor(note: AnalyzedNote): string[] {
-    if (!this.song) return [];
-    const mode = resolveHarmonyMode(this.harmonyMode, this.song.key.mode);
-    if (!mode) return [];
-    return chordForMelodyNote(note.midi, this.song.key.tonic, mode).map(midiToNoteName);
+    if (this.activeChordNotes.length === 0) return;
+    this.chordSynth.triggerRelease(this.activeChordNotes, Tone.now());
+    this.activeChordNotes = [];
   }
 
   /**
@@ -132,8 +139,19 @@ export class MelodyPlayer {
 
     const duration = Math.min(note.duration / this.speed || gap, gap * 0.95);
 
-    const chord = this.chordFor(note);
-    if (chord.length) this.harmonySynth.triggerAttackRelease(chord, duration, at, 0.7);
+    if (this.harmonyStyle !== "off") {
+      const chord = harmonizeNote(this.song, index, this.harmonyStyle, this.lastDegree);
+      if (chord) {
+        this.lastDegree = chord.degree;
+        this.chordSynth.triggerAttackRelease(
+          chord.notes.map(midiToNoteName),
+          duration,
+          at + chord.attackOffsetSec,
+          0.5
+        );
+      }
+    }
+
     this.synth.triggerAttackRelease(
       midiToNoteName(note.midi),
       duration,
@@ -168,8 +186,8 @@ export class MelodyPlayer {
       this.autoTimer = null;
     }
     this.synth.releaseAll();
-    this.harmonySynth.releaseAll();
-    this.activeChord = [];
+    this.chordSynth.releaseAll();
+    this.activeChordNotes = [];
     this.activeNote = null;
   }
 
@@ -178,22 +196,25 @@ export class MelodyPlayer {
     // 자동 재생 중에 손으로 누르면 수동 연주가 우선한다.
     this.stopAuto();
     if (!this.song || this.song.notes.length === 0) return null;
-    const note = this.song.notes[this.index];
+    const playedIndex = this.index;
+    const note = this.song.notes[playedIndex];
     this.index = (this.index + 1) % this.song.notes.length;
 
     this.synth.set({ detune: 0 } as any);
     this.vibrato.depth.value = 0;
 
-    const now = Tone.now();
     this.releaseChord();
-
-    const chord = this.chordFor(note);
-    if (chord.length > 0) {
-      this.harmonySynth.triggerAttack(chord, now, 0.7);
-      this.activeChord = chord;
+    if (this.harmonyStyle !== "off") {
+      const chord = harmonizeNote(this.song, playedIndex, this.harmonyStyle, this.lastDegree);
+      if (chord) {
+        this.lastDegree = chord.degree;
+        const names = chord.notes.map(midiToNoteName);
+        this.chordSynth.triggerAttack(names, Tone.now() + chord.attackOffsetSec, 0.5);
+        this.activeChordNotes = names;
+      }
     }
 
-    this.synth.triggerAttack(midiToNoteName(note.midi), now, note.velocity || 0.8);
+    this.synth.triggerAttack(midiToNoteName(note.midi), Tone.now(), note.velocity || 0.8);
     this.activeNote = note;
     return note;
   }
@@ -221,15 +242,19 @@ export class MelodyPlayer {
 
   reset() {
     this.index = 0;
+    this.lastDegree = null;
+    this.releaseChord();
   }
 
   dispose() {
     this.stopAuto();
     this.synth.disconnect();
     this.synth.dispose();
-    this.harmonySynth.disconnect();
-    this.harmonySynth.dispose();
     this.vibrato.dispose();
     this.effects.dispose();
+    this.chordSynth.disconnect();
+    this.chordSynth.dispose();
+    this.chordReverb.dispose();
+    this.chordGain.dispose();
   }
 }

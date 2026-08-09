@@ -100,3 +100,54 @@ export const INSTRUMENTS: InstrumentDef[] = [
 export function getInstrumentDef(id: InstrumentId): InstrumentDef {
   return INSTRUMENTS.find((i) => i.id === id) ?? INSTRUMENTS[0];
 }
+
+// Accompaniment timbres for the chord-style layer (harmony.ts). Kept separate
+// from the melody INSTRUMENTS above since they're picked automatically by
+// harmony style, not by the user directly.
+
+function hymnChordSynth(): Tone.PolySynth {
+  // Organ-ish dense harmonics, near-instant attack, full sustain: static chorale pad.
+  return new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: "fatsawtooth", count: 3, spread: 15 } as any,
+    envelope: { attack: 0.03, decay: 0.1, sustain: 0.9, release: 0.6 },
+  });
+}
+
+function gospelChordSynth(): Tone.PolySynth {
+  // Rhodes-like FM tone with a quick attack so 7th/9th voicings stay articulate.
+  return new Tone.PolySynth(Tone.FMSynth, {
+    harmonicity: 1.5,
+    modulationIndex: 3,
+    oscillator: { type: "sine" },
+    envelope: { attack: 0.01, decay: 0.3, sustain: 0.5, release: 0.4 },
+  });
+}
+
+function worshipChordSynth(): Tone.PolySynth {
+  // Slow-swelling detuned pad for sus4/add9 atmosphere.
+  return new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: "fatsine", count: 4, spread: 30 } as any,
+    envelope: { attack: 0.6, decay: 0.3, sustain: 0.8, release: 1.8 },
+  });
+}
+
+function ccliChordSynth(): Tone.PolySynth {
+  // Slightly softer attack than gospel; density (not timbre) carries the build-up.
+  return new Tone.PolySynth(Tone.Synth, {
+    oscillator: { type: "fattriangle", count: 3, spread: 20 } as any,
+    envelope: { attack: 0.15, decay: 0.2, sustain: 0.7, release: 0.9 },
+  });
+}
+
+export function buildChordSynth(style: "hymn" | "gospel" | "worship" | "ccli"): Tone.PolySynth {
+  switch (style) {
+    case "hymn":
+      return hymnChordSynth();
+    case "gospel":
+      return gospelChordSynth();
+    case "worship":
+      return worshipChordSynth();
+    case "ccli":
+      return ccliChordSynth();
+  }
+}

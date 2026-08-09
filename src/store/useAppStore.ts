@@ -2,7 +2,7 @@ import { create } from "zustand";
 import type { AnalyzedSong } from "../types/music";
 import type { InstrumentId } from "../audio/instruments";
 import type { DelayId, ReverbId } from "../audio/effects";
-import type { HarmonyMode } from "../audio/harmony";
+import type { HarmonyStyle } from "../lib/harmony";
 
 interface AppState {
   instrumentId: InstrumentId;
@@ -17,8 +17,8 @@ interface AppState {
   chorusOn: boolean;
   setChorusOn: (on: boolean) => void;
 
-  harmonyMode: HarmonyMode;
-  setHarmonyMode: (mode: HarmonyMode) => void;
+  harmonyStyle: HarmonyStyle;
+  setHarmonyStyle: (style: HarmonyStyle) => void;
 
   autoPlay: boolean;
   setAutoPlay: (on: boolean) => void;
@@ -55,8 +55,8 @@ export const useAppStore = create<AppState>((set) => ({
   chorusOn: false,
   setChorusOn: (on) => set({ chorusOn: on }),
 
-  harmonyMode: "auto",
-  setHarmonyMode: (mode) => set({ harmonyMode: mode }),
+  harmonyStyle: "off",
+  setHarmonyStyle: (harmonyStyle) => set({ harmonyStyle }),
 
   autoPlay: false,
   setAutoPlay: (on) => set({ autoPlay: on }),

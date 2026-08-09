@@ -1,5 +1,4 @@
 import { DELAY_PRESETS, REVERB_PRESETS } from "../audio/effects";
-import { HARMONY_OPTIONS } from "../audio/harmony";
 import { useAppStore } from "../store/useAppStore";
 
 interface RowProps {
@@ -25,8 +24,6 @@ export function SoundPanel() {
   const setDelayId = useAppStore((s) => s.setDelayId);
   const chorusOn = useAppStore((s) => s.chorusOn);
   const setChorusOn = useAppStore((s) => s.setChorusOn);
-  const harmonyMode = useAppStore((s) => s.harmonyMode);
-  const setHarmonyMode = useAppStore((s) => s.setHarmonyMode);
   const autoPlay = useAppStore((s) => s.autoPlay);
   const setAutoPlay = useAppStore((s) => s.setAutoPlay);
   const playbackSpeed = useAppStore((s) => s.playbackSpeed);
@@ -117,27 +114,6 @@ export function SoundPanel() {
         </button>
       </Row>
 
-      <Row label="화음">
-        {HARMONY_OPTIONS.map((o) => (
-          <button
-            key={o.id}
-            className={`sound-panel__chip${o.id === harmonyMode ? " active" : ""}`}
-            onClick={() => setHarmonyMode(o.id)}
-          >
-            {o.label}
-          </button>
-        ))}
-      </Row>
-
-      {harmonyMode !== "off" && (
-        <p className="sound-panel__note">
-          {harmonyMode === "auto"
-            ? currentSong
-              ? `곡의 조성(${currentSong.key.label})을 따릅니다`
-              : "곡을 선택하면 조성을 따릅니다"
-            : `${harmonyMode === "major" ? "장조" : "단조"}로 반주합니다 · 연주 중에도 바꿀 수 있습니다`}
-        </p>
-      )}
     </div>
   );
 }
