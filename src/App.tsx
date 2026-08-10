@@ -102,6 +102,80 @@ function App() {
     setAutoPlay(false);
   }, [currentSong, player, setAutoPlay]);
 
+  // 블루투스 키보드·페이지터너로도 연주할 수 있게 아무 키나 터치처럼 받는다.
+  // 누르면 다음 음, 떼면 릴리스 — 원형 버튼과 동작이 같다.
+  useEffect(() => {
+    let heldKey: string | null = null;
+    let safety: ReturnType<typeof setTimeout> | null = null;
+
+    const isTyping = (target: EventTarget | null) => {
+      const el = target as HTMLElement | null;
+      if (!el) return false;
+      return (
+        el.tagName === "INPUT" ||
+        el.tagName === "TEXTAREA" ||
+        el.tagName === "SELECT" ||
+        el.isContentEditable
+      );
+    };
+
+    const releaseHeld = () => {
+      if (heldKey === null) return;
+      heldKey = null;
+      if (safety) {
+        clearTimeout(safety);
+        safety = null;
+      }
+      player.release();
+    };
+
+    const onKeyDown = (e: KeyboardEvent) => {
+      // 브라우저 단축키(⌘R 등)와 키보드 탐색은 그대로 둔다.
+      if (e.ctrlKey || e.metaKey || e.altKey || e.key === "Tab") return;
+      // 검색창이나 가사 편집 중에는 글자를 쳐야 하므로 연주하지 않는다.
+      if (isTyping(e.target)) return;
+      // 길게 누르고 있으면 반복 이벤트가 쏟아진다. 한 음만 낸다.
+      if (e.repeat || heldKey !== null) return;
+
+      e.preventDefault(); // 스페이스·화살표의 화면 스크롤 방지
+      heldKey = e.code || e.key;
+
+      const play = () => {
+        setAutoPlay(false);
+        const note = player.attackNext();
+        if (!note) return;
+        setLastNote(note);
+        setLastIndex((player.currentIndex - 1 + player.totalNotes) % player.totalNotes);
+      };
+
+      if (Tone.getContext().state !== "running") {
+        // 키 입력도 사용자 조작이라 여기서 오디오를 열 수 있다.
+        Tone.start().then(play);
+      } else {
+        play();
+      }
+
+      // 페이지터너처럼 keyup 을 보내지 않는 기기가 있어 음이 계속 울릴 수 있다.
+      safety = setTimeout(releaseHeld, 5000);
+    };
+
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (heldKey === null || (e.code || e.key) !== heldKey) return;
+      releaseHeld();
+    };
+
+    // 창을 벗어나면 keyup 을 못 받으므로 눌린 상태를 정리한다.
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", releaseHeld);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", releaseHeld);
+      if (safety) clearTimeout(safety);
+    };
+  }, [player, setAutoPlay]);
+
   useEffect(() => () => player.dispose(), [player]);
 
   return (
@@ -171,6 +245,8 @@ function App() {
 
             <p className="app__hint">
               터치 = 다음 음 재생 · 누른 채 위/아래 = 음 높낮이 · 누른 채 좌/우로 흔들기 = 비브라토
+              <br />
+              키보드는 아무 키나 누르면 재생됩니다 (입력창에 커서가 있을 때는 제외)
             </p>
           </div>
         </section>
