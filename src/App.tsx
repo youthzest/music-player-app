@@ -135,7 +135,11 @@ function App() {
       // 검색창이나 가사 편집 중에는 글자를 쳐야 하므로 연주하지 않는다.
       if (isTyping(e.target)) return;
       // 길게 누르고 있으면 반복 이벤트가 쏟아진다. 한 음만 낸다.
-      if (e.repeat || heldKey !== null) return;
+      if (e.repeat) return;
+
+      // keyup 을 보내지 않는 HID 기기가 있다. 그런 기기에서 앞 음이 걸려 있다고
+      // 새 입력을 막으면 다음 누름이 통째로 씹힌다. 앞 음을 정리하고 이어서 친다.
+      if (heldKey !== null) releaseHeld();
 
       e.preventDefault(); // 스페이스·화살표의 화면 스크롤 방지
       heldKey = e.code || e.key;
@@ -164,14 +168,52 @@ function App() {
       releaseHeld();
     };
 
+    // 미디어 리모컨·이어폰 버튼은 keydown 을 만들지 않고 미디어 세션으로만 들어온다.
+    // 눌렀다 뗀 것으로 간주해 한 음을 짧게 낸다.
+    const mediaTap = () => {
+      setAutoPlay(false);
+      const note = player.attackNext();
+      if (!note) return;
+      setLastNote(note);
+      setLastIndex((player.currentIndex - 1 + player.totalNotes) % player.totalNotes);
+      setTimeout(() => player.release(), 350);
+    };
+
+    const media = navigator.mediaSession;
+    const mediaActions: MediaSessionAction[] = [
+      "play",
+      "pause",
+      "nexttrack",
+      "previoustrack",
+    ];
+    if (media) {
+      for (const action of mediaActions) {
+        try {
+          media.setActionHandler(action, mediaTap);
+        } catch {
+          // 브라우저가 지원하지 않는 액션은 건너뛴다.
+        }
+      }
+    }
+
+    // capture 단계에서 받아 다른 요소가 먼저 삼키는 일이 없게 한다.
     // 창을 벗어나면 keyup 을 못 받으므로 눌린 상태를 정리한다.
-    window.addEventListener("keydown", onKeyDown);
-    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("keydown", onKeyDown, { capture: true });
+    window.addEventListener("keyup", onKeyUp, { capture: true });
     window.addEventListener("blur", releaseHeld);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
-      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("keydown", onKeyDown, { capture: true });
+      window.removeEventListener("keyup", onKeyUp, { capture: true });
       window.removeEventListener("blur", releaseHeld);
+      if (media) {
+        for (const action of mediaActions) {
+          try {
+            media.setActionHandler(action, null);
+          } catch {
+            /* 지원하지 않는 액션 */
+          }
+        }
+      }
       if (safety) clearTimeout(safety);
     };
   }, [player, setAutoPlay]);
