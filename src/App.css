@@ -1,6 +1,10 @@
 /* 화면 높이를 넘기지 않게 잡아둔다. 이래야 안쪽 영역만 스크롤되고
-   하단 연주 독이 제자리에 고정된다. dvh 는 모바일 주소창 높이 변화를 반영한다. */
+   하단 연주 독이 제자리에 고정된다.
+   dvh 를 모르는 브라우저(iOS 16.3 이하 사파리)는 이 선언을 통째로 버리므로
+   반드시 vh 를 먼저 써서 폴백을 남겨야 한다. 폴백이 없으면 높이가 auto 가 되고
+   overflow:hidden 만 남아 사이드바가 접히며 아래 내용과 겹친다. */
 .app {
+  height: 100vh;
   height: 100dvh;
   display: flex;
   flex-direction: column;
@@ -84,35 +88,59 @@
   gap: 0.7rem;
   padding: 0.9rem 0 0.6rem;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
-  /* 스크롤되는 가사가 독 뒤로 비쳐 보이지 않도록 배경을 깔아준다. */
-  background: linear-gradient(to bottom, rgba(12, 14, 30, 0.85), rgba(12, 14, 30, 0.98));
+  /* 스크롤되는 가사가 독 뒤로 비쳐 보이지 않도록 배경을 깔아준다.
+     사파리는 아직 -webkit- 접두사가 필요하다. */
+  background: linear-gradient(to bottom, rgba(12, 14, 30, 0.92), rgba(12, 14, 30, 0.99));
+  -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
+  /* 아이폰 홈 인디케이터에 버튼이 가리지 않도록 여백을 준다. */
+  padding-bottom: calc(0.6rem + env(safe-area-inset-bottom));
 }
 
-/* 좁은 화면에서는 사이드바와 무대가 세로로 쌓이므로 전체를 스크롤시키고,
-   연주 독만 sticky 로 화면 아래에 붙여 둔다. */
+/* 좁은 화면에서는 중첩 스크롤을 쓰지 않는다.
+   iOS 사파리는 "높이가 잡힌 컨테이너 안의 스크롤 영역 안의 또 다른 스크롤 영역"에서
+   높이 계산이 어긋나 영역이 겹쳐 보이는 문제가 잦다. 그래서 모바일에서는 문서 전체를
+   평범하게 스크롤시키고, 연주 독만 sticky 로 화면 아래에 붙인다. */
 @media (max-width: 800px) {
+  .app {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
   .app__main {
     grid-template-columns: 1fr;
-    overflow-y: auto;
+    min-height: 0;
+    overflow: visible;
+    padding: 0 1rem 1rem;
   }
 
   .app__sidebar {
+    min-height: auto;
     overflow: visible;
   }
 
   .app__stage {
-    min-height: 72dvh;
+    min-height: auto;
+    overflow: visible;
   }
 
   .app__stage-scroll {
+    flex: 0 0 auto;
+    min-height: auto;
     overflow: visible;
+    padding-bottom: 0;
   }
 
   .app__dock {
     position: sticky;
     bottom: 0;
-    z-index: 2;
+    z-index: 3;
+  }
+
+  .prompter__lyrics {
+    max-height: 40vh;
   }
 }
 
@@ -233,13 +261,18 @@
 
 .catalog__input {
   width: 100%;
+  min-width: 0; /* flex 안에서 입력창이 줄어들지 못해 옆 요소를 밀어내는 것을 막는다 */
   background: rgba(0, 0, 0, 0.25);
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 10px;
   color: #f4f6ff;
   padding: 0.55rem 0.7rem;
-  font-size: 0.9rem;
+  /* iOS 는 16px 미만 입력창에 포커스하면 화면을 확대해 레이아웃이 틀어진다. */
+  font-size: 16px;
   font-family: inherit;
+  /* 사파리 기본 검색창 스타일(둥근 모서리·내부 그림자)을 끈다. */
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .catalog__input::placeholder {
@@ -485,10 +518,13 @@
   border-radius: 10px;
   color: #f4f6ff;
   padding: 0.6rem 0.7rem;
-  font-size: 0.9rem;
+  /* iOS 확대 방지 — 16px 미만이면 포커스 시 화면이 줌된다. */
+  font-size: 16px;
   line-height: 1.6;
   resize: vertical;
   font-family: inherit;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .prompter__editor-actions {
