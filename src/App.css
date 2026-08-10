@@ -1,7 +1,10 @@
+/* 화면 높이를 넘기지 않게 잡아둔다. 이래야 안쪽 영역만 스크롤되고
+   하단 연주 독이 제자리에 고정된다. dvh 는 모바일 주소창 높이 변화를 반영한다. */
 .app {
-  min-height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   color: #f4f6ff;
 }
 
@@ -23,16 +26,11 @@
 
 .app__main {
   flex: 1;
+  min-height: 0; /* 없으면 그리드가 내용 높이만큼 늘어나 고정이 깨진다 */
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 1.5rem;
-  padding: 0 2rem 2rem;
-}
-
-@media (max-width: 800px) {
-  .app__main {
-    grid-template-columns: 1fr;
-  }
+  padding: 0 2rem 1rem;
 }
 
 .app__sidebar {
@@ -42,7 +40,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  height: fit-content;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .app__section-title {
@@ -60,10 +59,61 @@
 .app__stage {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  padding: 0 1rem;
+}
+
+/* 설정과 가사만 여기서 스크롤된다. 아무리 길어져도 아래 독을 밀지 못한다. */
+.app__stage-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1.5rem;
-  padding: 1rem;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+/* 연주 영역. 항상 화면 아래쪽 같은 자리에 머문다. */
+.app__dock {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.9rem 0 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  /* 스크롤되는 가사가 독 뒤로 비쳐 보이지 않도록 배경을 깔아준다. */
+  background: linear-gradient(to bottom, rgba(12, 14, 30, 0.85), rgba(12, 14, 30, 0.98));
+  backdrop-filter: blur(6px);
+}
+
+/* 좁은 화면에서는 사이드바와 무대가 세로로 쌓이므로 전체를 스크롤시키고,
+   연주 독만 sticky 로 화면 아래에 붙여 둔다. */
+@media (max-width: 800px) {
+  .app__main {
+    grid-template-columns: 1fr;
+    overflow-y: auto;
+  }
+
+  .app__sidebar {
+    overflow: visible;
+  }
+
+  .app__stage {
+    min-height: 72dvh;
+  }
+
+  .app__stage-scroll {
+    overflow: visible;
+  }
+
+  .app__dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+  }
 }
 
 .app__now-playing {
@@ -378,11 +428,14 @@
   margin-top: 0.6rem;
 }
 
+/* 글자 크기를 키워도 상자 자체는 크게 변하지 않고 안쪽만 스크롤된다. */
 .prompter__lyrics {
-  max-height: 38vh;
+  min-height: 9rem;
+  max-height: 34vh;
   overflow-y: auto;
   line-height: 1.75;
   text-align: center;
+  overscroll-behavior: contain;
 }
 
 .prompter__line {

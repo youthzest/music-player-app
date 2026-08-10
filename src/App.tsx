@@ -130,41 +130,49 @@ function App() {
           {libraryOpen && <SongLibrary />}
         </aside>
 
+        {/*
+          무대는 두 층으로 나뉜다. 위층(app__stage-scroll)만 스크롤되고,
+          아래 연주 독(app__dock)은 화면 하단에 고정된다. 가사를 키우거나
+          설정을 펼쳐도 터치 버튼 위치가 흔들리지 않게 하기 위한 구조다.
+        */}
         <section className="app__stage">
-          <InstrumentSelector />
-          <HarmonyStyleSelector />
-          <SoundPanel />
-
-          {chordChart.length > 0 && (
-            <ChordChartStrip chart={chordChart} currentIndex={lastIndex} />
-          )}
-
-          <div className="app__now-playing">
-            {lastNote ? (
-              <>
-                <span className="app__note-solfege">{lastNote.solfege}</span>
-                <span className="app__note-name">{midiToNoteName(lastNote.midi)}</span>
-              </>
-            ) : (
-              <span className="app__note-placeholder">터치해서 연주를 시작하세요</span>
-            )}
+          <div className="app__stage-scroll">
+            <InstrumentSelector />
+            <HarmonyStyleSelector />
+            <SoundPanel />
+            <Prompter currentIndex={lastIndex} />
           </div>
 
-          <CircularPlayButton
-            player={player}
-            onNotePlayed={(note, index) => {
-              // 손으로 누르면 수동 연주가 우선한다(플레이어 쪽에서도 자동을 멈춘다).
-              setAutoPlay(false);
-              setLastNote(note);
-              setLastIndex(index);
-            }}
-          />
+          <div className="app__dock">
+            {chordChart.length > 0 && (
+              <ChordChartStrip chart={chordChart} currentIndex={lastIndex} />
+            )}
 
-          <Prompter currentIndex={lastIndex} />
+            <div className="app__now-playing">
+              {lastNote ? (
+                <>
+                  <span className="app__note-solfege">{lastNote.solfege}</span>
+                  <span className="app__note-name">{midiToNoteName(lastNote.midi)}</span>
+                </>
+              ) : (
+                <span className="app__note-placeholder">터치해서 연주를 시작하세요</span>
+              )}
+            </div>
 
-          <p className="app__hint">
-            터치 = 다음 음 재생 · 누른 채 위/아래 = 음 높낮이 · 누른 채 좌/우로 흔들기 = 비브라토
-          </p>
+            <CircularPlayButton
+              player={player}
+              onNotePlayed={(note, index) => {
+                // 손으로 누르면 수동 연주가 우선한다(플레이어 쪽에서도 자동을 멈춘다).
+                setAutoPlay(false);
+                setLastNote(note);
+                setLastIndex(index);
+              }}
+            />
+
+            <p className="app__hint">
+              터치 = 다음 음 재생 · 누른 채 위/아래 = 음 높낮이 · 누른 채 좌/우로 흔들기 = 비브라토
+            </p>
+          </div>
         </section>
       </main>
     </div>

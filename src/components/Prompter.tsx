@@ -36,13 +36,20 @@ export function Prompter({ currentIndex }: Props) {
   const [fontScale, setFontScale] = useState(1);
   const [saving, setSaving] = useState(false);
   const activeRef = useRef<HTMLSpanElement>(null);
+  const lyricsRef = useRef<HTMLDivElement>(null);
 
   const lyrics = currentSong?.lyrics ?? "";
   const lines = useMemo(() => (lyrics ? tokenizeLyrics(lyrics) : []), [lyrics]);
 
   // 현재 부르는 음절이 항상 보이도록 따라간다.
+  // scrollIntoView 를 쓰면 바깥 스크롤 영역까지 함께 움직여 연주 영역이 흔들린다.
+  // 그래서 가사 상자만 직접 스크롤한다.
   useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
+    const box = lyricsRef.current;
+    const token = activeRef.current;
+    if (!box || !token) return;
+    const target = token.offsetTop - box.clientHeight / 2 + token.offsetHeight / 2;
+    box.scrollTo({ top: Math.max(0, target), behavior: "smooth" });
   }, [currentIndex]);
 
   useEffect(() => {
@@ -122,7 +129,11 @@ export function Prompter({ currentIndex }: Props) {
               </div>
             </div>
           ) : lines.length > 0 ? (
-            <div className="prompter__lyrics" style={{ fontSize: `${fontScale * 1.5}rem` }}>
+            <div
+              className="prompter__lyrics"
+              ref={lyricsRef}
+              style={{ fontSize: `${fontScale * 1.5}rem` }}
+            >
               {lines.map((tokens, li) => (
                 <p key={li} className="prompter__line">
                   {tokens.length === 0 ? (
