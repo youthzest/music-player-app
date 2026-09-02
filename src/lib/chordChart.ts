@@ -221,6 +221,12 @@ interface Candidate {
   score: number;
 }
 
+// 장르색(favor)·유지(prev) 보너스가 실제 멜로디 적합도(base)를 뒤집을 수 있는 폭.
+// 이보다 크면 멜로디와 안 맞는 화음도 보너스만으로 계속 이겨서, 그 화음에
+// 곡이 끝날 때까지 눌러앉는 문제가 생긴다. 그래서 base 점수가 최고 후보와
+// TIE_MARGIN 이내인 "그럴듯한" 후보끼리만 보너스로 순위를 가른다.
+const TIE_MARGIN = 0.2;
+
 function scoreSegment(
   weights: number[],
   totalWeight: number,
@@ -232,31 +238,43 @@ function scoreSegment(
 ): Candidate | null {
   if (totalWeight <= 0) return null;
 
-  let best: Candidate | null = null;
+  const scored: { rootPc: number; quality: ChordQuality; base: number }[] = [];
+  let maxBase = -Infinity;
+
   for (const { rootPc, quality } of candidates) {
     const spec = QUALITY_SPECS[quality];
     const tones = new Set(spec.intervals.map((i) => (rootPc + i) % 12));
 
-    let score = 0;
+    let base = 0;
     for (let pc = 0; pc < 12; pc++) {
       if (weights[pc] === 0) continue;
       const w = weights[pc] / totalWeight;
       // 화음에 속한 음은 더하고, 벗어난 음은 뺀다. 지나가는 음 하나 때문에
       // 화음이 바뀌지 않도록 감점은 가점보다 약하게 둔다.
-      score += tones.has(pc) ? w : -0.55 * w;
+      base += tones.has(pc) ? w : -0.55 * w;
     }
 
     // 구간 첫 음이 화음 구성음이면 그 화음일 가능성이 높다.
-    if (bassPc !== null && tones.has(bassPc)) score += 0.25;
-    score += functionalBonus(key, rootPc);
-    score -= spec.complexity * 0.12;
-    // 스타일 간판 코드는 복잡도 감점을 상쇄하고도 남을 만큼 밀어준다.
-    if (favor.has(quality)) score += 0.32;
-    // 앞 구간과 같은 화음이면 우대해서 진행이 덜 흔들리게 한다.
-    // 실제 악보도 한 코드를 여러 마디 끄는 경우가 많다.
-    if (prev && prev.rootPc === rootPc && prev.quality === quality) score += 0.4;
+    if (bassPc !== null && tones.has(bassPc)) base += 0.25;
+    base += functionalBonus(key, rootPc);
+    base -= spec.complexity * 0.12;
 
-    if (!best || score > best.score) best = { rootPc, quality, score };
+    if (base > maxBase) maxBase = base;
+    scored.push({ rootPc, quality, base });
+  }
+
+  let best: Candidate | null = null;
+  for (const c of scored) {
+    let score = c.base;
+    // 멜로디와 그럴듯하게 맞는 후보에게만 장르색/유지 보너스를 준다.
+    if (c.base >= maxBase - TIE_MARGIN) {
+      // 스타일 간판 코드는 복잡도 감점을 상쇄하고도 남을 만큼 밀어준다.
+      if (favor.has(c.quality)) score += 0.32;
+      // 앞 구간과 같은 화음이면 우대해서 진행이 덜 흔들리게 한다.
+      // 실제 악보도 한 코드를 여러 마디 끄는 경우가 많다.
+      if (prev && prev.rootPc === c.rootPc && prev.quality === c.quality) score += 0.4;
+    }
+    if (!best || score > best.score) best = { rootPc: c.rootPc, quality: c.quality, score };
   }
   return best;
 }
