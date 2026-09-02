@@ -36,7 +36,7 @@ function App() {
   return (
     <div className="app">
       <header className="app__header">
-        <h1>연주 웹앱</h1>
+        <h1>Hymn OS</h1>
         <p className="app__subtitle">
           {currentSong
             ? `${currentSong.title} · ${currentSong.key.label} · ${currentSong.tempo} BPM`
