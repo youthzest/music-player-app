@@ -3,6 +3,7 @@ import type { AnalyzedSong } from "../types/music";
 import type { InstrumentId } from "../audio/instruments";
 import type { DelayId, SpaceId } from "../audio/spaces";
 import type { HarmonyStyle } from "../lib/harmony";
+import type { MelodyStackMode } from "../lib/melodyStack";
 
 interface AppState {
   instrumentId: InstrumentId;
@@ -21,9 +22,9 @@ interface AppState {
   melodyFocus: number;
   setMelodyFocus: (v: number) => void;
 
-  /** 멜로디 음 하나를 3도·5도 위로 쌓아 두껍게 낼지 (도 -> 도미솔) */
-  melodyStackOn: boolean;
-  setMelodyStackOn: (on: boolean) => void;
+  /** 멜로디 음을 겹쳐 두껍게 낼 방식 (단음/옥타브/3도/도미솔/코드톤/보이스 리딩) */
+  melodyStackMode: MelodyStackMode;
+  setMelodyStackMode: (mode: MelodyStackMode) => void;
 
   harmonyStyle: HarmonyStyle;
   setHarmonyStyle: (style: HarmonyStyle) => void;
@@ -66,8 +67,8 @@ export const useAppStore = create<AppState>((set) => ({
   melodyFocus: 60,
   setMelodyFocus: (v) => set({ melodyFocus: v }),
 
-  melodyStackOn: false,
-  setMelodyStackOn: (on) => set({ melodyStackOn: on }),
+  melodyStackMode: "off",
+  setMelodyStackMode: (melodyStackMode) => set({ melodyStackMode }),
 
   harmonyStyle: "off",
   setHarmonyStyle: (harmonyStyle) => set({ harmonyStyle }),

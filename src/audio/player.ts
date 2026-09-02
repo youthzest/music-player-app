@@ -7,7 +7,14 @@ import { Mixer } from "./mixer";
 import type { SpaceId } from "./spaces";
 import { getHarmonyStyle, voiceForStyle, type HarmonyStyle } from "../lib/harmony";
 import { chordAtIndex, type ChordSegment } from "../lib/chordChart";
-import { stackMelodyNote } from "../lib/melodyStack";
+import {
+  chordToneStack,
+  octaveStack,
+  thirdBelowStack,
+  triadStack,
+  voiceLeadStack,
+  type MelodyStackMode,
+} from "../lib/melodyStack";
 
 /** Max continuous pitch bend range in cents (300 = about a whole step),
  * keeping the expressive bend close to the original melody note. */
@@ -31,9 +38,11 @@ export class MelodyPlayer {
   private chart: ChordSegment[] = [];
   private activeSegment: ChordSegment | null = null;
 
-  private melodyStackOn = false;
-  /** 지금 울리고 있는 멜로디 성부 음 이름들 (스택이 켜져 있으면 2~3개). */
+  private melodyStackMode: MelodyStackMode = "off";
+  /** 지금 울리고 있는 멜로디 성부 음 이름들 (모드가 켜져 있으면 2~3개). */
   private activeMelodyNotes: string[] = [];
+  /** 보이스 리딩 모드가 마지막으로 겹친 화성음. 성부가 부드럽게 이어지도록 기억해둔다. */
+  private lastVoiceLeadMidi: number | null = null;
 
   constructor(instrumentId: InstrumentId = "piano-worship") {
     this.instrumentId = instrumentId;
@@ -73,15 +82,50 @@ export class MelodyPlayer {
     this.mixer.setMelodyFocus(value);
   }
 
-  /** 멜로디 음 하나를 3도·5도 위로 쌓아 두껍게 낼지. */
-  setMelodyStack(on: boolean) {
-    this.melodyStackOn = on;
+  /** 멜로디 음을 어떤 방식으로 겹쳐 낼지. */
+  setMelodyStackMode(mode: MelodyStackMode) {
+    if (mode === this.melodyStackMode) return;
+    this.melodyStackMode = mode;
+    this.lastVoiceLeadMidi = null;
   }
 
-  /** 스택이 켜져 있으면 조성에 맞춰 3도·5도를 쌓은 음 이름들을, 아니면 원음 하나를 돌려준다. */
+  /** 지금 활성화된 반주 코드의 구성음을 피치클래스(0~11)로 돌려준다. 없으면 빈 배열. */
+  private activeChordPcs(): number[] {
+    if (!this.activeSegment) return [];
+    const root = this.activeSegment.rootPc;
+    return this.activeSegment.intervals.map((i) => (root + i) % 12);
+  }
+
+  /** 선택된 모드에 맞춰 멜로디 음 하나를 여러 음으로 겹쳐 음 이름 배열을 돌려준다. */
   private melodyNoteNames(midi: number): string[] {
-    if (!this.melodyStackOn || !this.song) return [midiToNoteName(midi)];
-    return stackMelodyNote(midi, this.song.key).map(midiToNoteName);
+    if (!this.song) return [midiToNoteName(midi)];
+    const key = this.song.key;
+
+    switch (this.melodyStackMode) {
+      case "off":
+        return [midiToNoteName(midi)];
+      case "octave":
+        return octaveStack(midi).map(midiToNoteName);
+      case "third":
+        return thirdBelowStack(midi, key).map(midiToNoteName);
+      case "triad":
+        return triadStack(midi, key).map(midiToNoteName);
+      case "chordTone": {
+        const pcs = this.activeChordPcs();
+        const notes = pcs.length > 0 ? chordToneStack(midi, pcs) : triadStack(midi, key);
+        return notes.map(midiToNoteName);
+      }
+      case "voiceLead": {
+        const pcs = this.activeChordPcs();
+        if (pcs.length === 0) {
+          this.lastVoiceLeadMidi = null;
+          return triadStack(midi, key).map(midiToNoteName);
+        }
+        const { notes, next } = voiceLeadStack(midi, pcs, this.lastVoiceLeadMidi);
+        this.lastVoiceLeadMidi = next;
+        return notes.map(midiToNoteName);
+      }
+    }
   }
 
   setChordChart(chart: ChordSegment[]) {
@@ -112,6 +156,7 @@ export class MelodyPlayer {
     this.song = song;
     this.index = 0;
     this.activeSegment = null;
+    this.lastVoiceLeadMidi = null;
   }
 
   get currentIndex() {
@@ -259,6 +304,7 @@ export class MelodyPlayer {
   reset() {
     this.index = 0;
     this.activeSegment = null;
+    this.lastVoiceLeadMidi = null;
     this.mixer.releaseChord();
   }
 

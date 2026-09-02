@@ -26,7 +26,7 @@ function App() {
   const delayId = useAppStore((s) => s.delayId);
   const chorusOn = useAppStore((s) => s.chorusOn);
   const melodyFocus = useAppStore((s) => s.melodyFocus);
-  const melodyStackOn = useAppStore((s) => s.melodyStackOn);
+  const melodyStackMode = useAppStore((s) => s.melodyStackMode);
   const autoPlay = useAppStore((s) => s.autoPlay);
   const setAutoPlay = useAppStore((s) => s.setAutoPlay);
   const playbackSpeed = useAppStore((s) => s.playbackSpeed);
@@ -60,8 +60,8 @@ function App() {
   }, [melodyFocus, player]);
 
   useEffect(() => {
-    player.setMelodyStack(melodyStackOn);
-  }, [melodyStackOn, player]);
+    player.setMelodyStackMode(melodyStackMode);
+  }, [melodyStackMode, player]);
 
   useEffect(() => {
     player.setChorus(chorusOn);

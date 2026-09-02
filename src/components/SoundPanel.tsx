@@ -1,4 +1,5 @@
 import { DELAY_PRESETS, SPACES } from "../audio/spaces";
+import { MELODY_STACK_MODES, getMelodyStackMode } from "../lib/melodyStack";
 import { useAppStore } from "../store/useAppStore";
 
 interface RowProps {
@@ -35,8 +36,8 @@ export function SoundPanel() {
   const setChorusOn = useAppStore((s) => s.setChorusOn);
   const melodyFocus = useAppStore((s) => s.melodyFocus);
   const setMelodyFocus = useAppStore((s) => s.setMelodyFocus);
-  const melodyStackOn = useAppStore((s) => s.melodyStackOn);
-  const setMelodyStackOn = useAppStore((s) => s.setMelodyStackOn);
+  const melodyStackMode = useAppStore((s) => s.melodyStackMode);
+  const setMelodyStackMode = useAppStore((s) => s.setMelodyStackMode);
   const autoPlay = useAppStore((s) => s.autoPlay);
   const setAutoPlay = useAppStore((s) => s.setAutoPlay);
   const playbackSpeed = useAppStore((s) => s.playbackSpeed);
@@ -106,24 +107,17 @@ export function SoundPanel() {
       <p className="sound-panel__note">{focusHint(melodyFocus)}</p>
 
       <Row label="멜로디 두껍게">
-        <button
-          className={`sound-panel__chip${!melodyStackOn ? " active" : ""}`}
-          onClick={() => setMelodyStackOn(false)}
-        >
-          단음
-        </button>
-        <button
-          className={`sound-panel__chip${melodyStackOn ? " active" : ""}`}
-          onClick={() => setMelodyStackOn(true)}
-        >
-          도미솔
-        </button>
+        {MELODY_STACK_MODES.map((m) => (
+          <button
+            key={m.id}
+            className={`sound-panel__chip${m.id === melodyStackMode ? " active" : ""}`}
+            onClick={() => setMelodyStackMode(m.id)}
+          >
+            {m.label}
+          </button>
+        ))}
       </Row>
-      <p className="sound-panel__note">
-        {melodyStackOn
-          ? "멜로디 음 하나를 3도·5도 위로 쌓아서 냅니다 (도 → 도미솔). 음량·존재감이 커집니다."
-          : "멜로디를 원음 그대로 한 음씩 냅니다."}
-      </p>
+      <p className="sound-panel__note">{getMelodyStackMode(melodyStackMode).description}</p>
 
       <Row label="공간">
         {SPACES.map((s) => (
