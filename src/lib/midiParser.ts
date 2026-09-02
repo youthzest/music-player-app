@@ -1,5 +1,6 @@
 import { Midi } from "@tonejs/midi";
 import type { ParsedNote, ParsedSong } from "../types/music";
+import { repairLatin1Mojibake } from "./textDecode";
 
 export async function parseMidiFile(file: File): Promise<ParsedSong> {
   const buffer = await file.arrayBuffer();
@@ -21,7 +22,9 @@ export async function parseMidiFile(file: File): Promise<ParsedSong> {
   const tempo = midi.header.tempos[0]?.bpm ?? 120;
   const ts = midi.header.timeSignatures[0]?.timeSignature ?? [4, 4];
 
-  const title = midi.header.name?.trim() || file.name.replace(/\.[^/.]+$/, "");
+  // MIDI 메타 텍스트는 Latin-1 로 읽혀 오므로 UTF-8 한글을 되살린다.
+  const embeddedName = repairLatin1Mojibake(midi.header.name?.trim() ?? "");
+  const title = embeddedName || file.name.replace(/\.[^/.]+$/, "");
 
   return {
     title,

@@ -1,216 +1,202 @@
-// Style-aware chord accompaniment generator. Given the song's detected key and
-// the scale degree of the melody note currently playing, builds a diatonic
-// chord and voices it differently per style so the accompaniment "feels" like
-// a hymn / gospel / CCM-worship / CCLI-band performance rather than a generic
-// harmonizer.
+// 반주 스타일 정의와 화음 배치(보이싱) 유틸.
+//
+// 어떤 코드를 칠지는 chordChart.ts 가 곡 전체를 미리 분석해 정하고,
+// 여기서는 스타일의 성격과 "정해진 코드를 어느 높이에 놓을지"를 담당한다.
 
-import type { AnalyzedSong, KeyInfo } from "../types/music";
+import type { ChordVoiceTone } from "../audio/instruments";
 
-export type HarmonyStyle = "off" | "hymn" | "gospel" | "worship" | "ccli";
+export type HarmonyStyle =
+  | "off"
+  | "hymn"
+  | "gospel"
+  | "worship"
+  | "ccli"
+  | "hillsong"
+  | "bethel"
+  | "jesusimage"
+  | "marcus"
+  | "jazz";
 
 export interface HarmonyStyleDef {
   id: HarmonyStyle;
   label: string;
+  /** 대표 코드 — 사용자가 스타일 감을 잡도록 D조 기준으로 보여준다. */
+  signature: string;
   description: string;
+  /** 반주 성부에 쓰는 음색 */
+  tone: ChordVoiceTone;
+  /** 화음이 멜로디보다 늦게 들어오는 정도(초). 실제 연주자의 손 움직임을 흉내낸다. */
+  laySec: number;
+  /** 성부를 아래에서 위로 굴리는 간격(초). 0 이면 동시에 친다. */
+  rollSec: number;
+  /** 최고 성부를 한 옥타브 띄워 넓게 벌릴지 */
+  openVoicing: boolean;
 }
 
 export const HARMONY_STYLES: HarmonyStyleDef[] = [
-  { id: "off", label: "화음 없음", description: "멜로디만 단독으로 연주합니다." },
+  {
+    id: "off",
+    label: "화음 없음",
+    signature: "",
+    description: "멜로디만 단독으로 연주합니다.",
+    tone: "warm",
+    laySec: 0,
+    rollSec: 0,
+    openVoicing: false,
+  },
   {
     id: "hymn",
     label: "찬송가",
-    description: "SATB 코랄 화성 · 예측 가능한 정격 진행 · 촘촘하고 정적인 텍스처",
+    signature: "D · G · A · Bm",
+    description: "3화음 중심의 정격 진행 · 촘촘하고 정적인 코랄 텍스처",
+    tone: "organ",
+    laySec: 0.006,
+    rollSec: 0,
+    openVoicing: false,
   },
   {
     id: "gospel",
     label: "가스펠",
-    description: "7th/9th 확장 화음 · 워킹 베이스 · 살짝 당겨지는 싱커페이션",
+    signature: "DM7 · Am7 · A7",
+    description: "7화음 확장 · 살짝 당겨 들어오는 싱커페이션",
+    tone: "rhodes",
+    laySec: 0.045,
+    rollSec: 0.012,
+    openVoicing: false,
   },
   {
     id: "worship",
     label: "CCM/워십",
-    description: "sus4·add9 오픈 보이싱 · 넓게 벌린 패드 사운드로 공간감",
+    signature: "Dsus4 · Gadd9",
+    description: "sus2·sus4·add9 · 넓게 벌린 패드로 공간감",
+    tone: "pad",
+    laySec: 0.015,
+    rollSec: 0.008,
+    openVoicing: true,
   },
   {
     id: "ccli",
     label: "CCLI 밴드",
-    description: "레이어드 보이싱 · 곡이 진행될수록 밀도가 쌓이는 다이나믹 빌드업",
+    signature: "D · Bm7 · Gadd9",
+    description: "3화음과 7화음·add9 를 섞은 밴드 편성",
+    tone: "warm",
+    laySec: 0.012,
+    rollSec: 0.006,
+    openVoicing: true,
+  },
+  {
+    id: "hillsong",
+    label: "힐송",
+    signature: "Dadd9 · Asus4 · Bm7 · Gadd9",
+    description: "add9 와 sus4 를 겹쳐 쌓는 스타디움 워십 사운드",
+    tone: "pad",
+    laySec: 0.018,
+    rollSec: 0.01,
+    openVoicing: true,
+  },
+  {
+    id: "bethel",
+    label: "벧엘",
+    signature: "DM7 · Bm11 · G2",
+    description: "maj7·m11·2 코드로 3음을 비운 몽환적인 앰비언트",
+    tone: "pad",
+    laySec: 0.025,
+    rollSec: 0.014,
+    openVoicing: true,
+  },
+  {
+    id: "jesusimage",
+    label: "제이어스",
+    signature: "Dadd9 · D/F# · Bm7",
+    description: "add9 에 분수코드를 섞어 베이스가 계단처럼 움직임",
+    tone: "warm",
+    laySec: 0.015,
+    rollSec: 0.008,
+    openVoicing: false,
+  },
+  {
+    id: "marcus",
+    label: "마커스",
+    signature: "Dsus2 · Gadd9 · Bm7",
+    description: "sus2 로 3음을 비운 담백하고 서정적인 한국 워십",
+    tone: "rhodes",
+    laySec: 0.012,
+    rollSec: 0.006,
+    openVoicing: false,
+  },
+  {
+    id: "jazz",
+    label: "재즈 워십",
+    signature: "DM9 · Em9 · A13",
+    description: "9th·13th 텐션과 롤링 보이싱 · 재즈 하모니",
+    tone: "rhodes",
+    laySec: 0.05,
+    rollSec: 0.022,
+    openVoicing: true,
   },
 ];
 
-// Diatonic scale-degree -> semitone offset from the tonic, matching solfege.ts.
-const MAJOR_DEGREE_TO_OFFSET: Record<number, number> = { 1: 0, 2: 2, 3: 4, 4: 5, 5: 7, 6: 9, 7: 11 };
-const MINOR_DEGREE_TO_OFFSET: Record<number, number> = { 1: 0, 2: 2, 3: 3, 4: 5, 5: 7, 6: 8, 7: 10 };
-
-type TriadQuality = "major" | "minor" | "diminished";
-type SeventhQuality = "maj7" | "min7" | "dom7" | "halfdim7" | "dim7";
-
-// Root-position triad on each scale degree.
-const MAJOR_TRIAD_BY_DEGREE: Record<number, TriadQuality> = {
-  1: "major", 2: "minor", 3: "minor", 4: "major", 5: "major", 6: "minor", 7: "diminished",
-};
-// Minor key uses the harmonic-minor V (raised leading tone) so the cadence still
-// resolves like a dominant — the same borrowing every hymn/gospel arranger makes.
-const MINOR_TRIAD_BY_DEGREE: Record<number, TriadQuality> = {
-  1: "minor", 2: "diminished", 3: "major", 4: "minor", 5: "major", 6: "major", 7: "diminished",
-};
-
-const MAJOR_SEVENTH_BY_DEGREE: Record<number, SeventhQuality> = {
-  1: "maj7", 2: "min7", 3: "min7", 4: "maj7", 5: "dom7", 6: "min7", 7: "halfdim7",
-};
-const MINOR_SEVENTH_BY_DEGREE: Record<number, SeventhQuality> = {
-  1: "min7", 2: "halfdim7", 3: "maj7", 4: "min7", 5: "dom7", 6: "maj7", 7: "dim7",
-};
-
-const TRIAD_INTERVALS: Record<TriadQuality, number[]> = {
-  major: [0, 4, 7],
-  minor: [0, 3, 7],
-  diminished: [0, 3, 6],
-};
-
-const SEVENTH_INTERVALS: Record<SeventhQuality, number[]> = {
-  maj7: [0, 4, 7, 11],
-  min7: [0, 3, 7, 10],
-  dom7: [0, 4, 7, 10],
-  halfdim7: [0, 3, 6, 10],
-  dim7: [0, 3, 6, 9],
-};
-
-type Extension = "triad" | "seventh" | "ninth" | "sus4" | "add9";
-
-function chordRootPitchClass(key: KeyInfo, degree: number): number {
-  const offset = (key.mode === "major" ? MAJOR_DEGREE_TO_OFFSET : MINOR_DEGREE_TO_OFFSET)[degree] ?? 0;
-  return (key.tonic + offset) % 12;
+export function getHarmonyStyle(id: HarmonyStyle): HarmonyStyleDef {
+  return HARMONY_STYLES.find((s) => s.id === id) ?? HARMONY_STYLES[0];
 }
 
-function triadQuality(key: KeyInfo, degree: number): TriadQuality {
-  return (key.mode === "major" ? MAJOR_TRIAD_BY_DEGREE : MINOR_TRIAD_BY_DEGREE)[degree] ?? "major";
-}
-
-function chordIntervals(key: KeyInfo, degree: number, extension: Extension): number[] {
-  const quality = triadQuality(key, degree);
-  if (extension === "sus4") return [0, 5, 7];
-  if (extension === "add9") {
-    if (quality === "diminished") return [0, 7]; // avoid a muddy dim-add9
-    return [0, TRIAD_INTERVALS[quality][1], 7, 14];
-  }
-  if (extension === "seventh" || extension === "ninth") {
-    const sevQuality = (key.mode === "major" ? MAJOR_SEVENTH_BY_DEGREE : MINOR_SEVENTH_BY_DEGREE)[degree] ?? "dom7";
-    const base = SEVENTH_INTERVALS[sevQuality];
-    return extension === "ninth" ? [...base, 14] : base;
-  }
-  return TRIAD_INTERVALS[quality];
-}
+// 노트북·휴대폰 스피커는 대략 이 아래를 재생하지 못한다. 보이싱이 이보다 낮게 깔리면
+// 화음이 "안 들려서" 멜로디만 단음으로 나는 것처럼 들린다.
+export const MIN_CHORD_MIDI = 45; // A2 (110Hz)
 
 /** Closest MIDI note with the given pitch class to a target MIDI note. */
-function pitchNear(pitchClass: number, target: number): number {
+export function pitchNear(pitchClass: number, target: number): number {
   return pitchClass + 12 * Math.round((target - pitchClass) / 12);
 }
 
-/** Stacks pitch classes upward in close position starting above `floorMidi`, capped at `ceilingMidi`. */
-function stackClose(pitchClasses: number[], floorMidi: number, ceilingMidi: number): number[] {
-  const voices: number[] = [];
-  let prev = floorMidi;
-  for (const pc of pitchClasses) {
-    let candidate = pitchNear(pc, prev);
-    if (candidate <= prev) candidate += 12;
-    while (candidate > ceilingMidi) candidate -= 12;
-    while (candidate <= prev) candidate += 12;
-    voices.push(candidate);
-    prev = candidate;
+/**
+ * 화음을 근음 위에 음정 구조 그대로 쌓고, 그 덩어리를 옥타브 단위로 옮겨
+ * (1) 최고음이 멜로디보다 반드시 낮고 (2) 가능한 한 들리는 음역에 오도록 배치한다.
+ */
+export function voiceChord(rootPc: number, intervals: number[], melodyMidi: number): number[] {
+  const sorted = [...intervals].sort((a, b) => a - b);
+  const span = sorted[sorted.length - 1];
+  let root = pitchNear(rootPc, melodyMidi - 1 - span);
+
+  let guard = 0;
+  while (root + span >= melodyMidi && guard++ < 8) root -= 12;
+  guard = 0;
+  while (root < MIN_CHORD_MIDI && root + 12 + span < melodyMidi && guard++ < 8) root += 12;
+
+  return sorted.map((i) => root + i);
+}
+
+function voiceWithFallback(rootPc: number, candidates: number[][], melodyMidi: number): number[] {
+  for (const intervals of candidates) {
+    const voiced = voiceChord(rootPc, intervals, melodyMidi);
+    if (Math.min(...voiced) >= MIN_CHORD_MIDI) return voiced;
   }
-  return voices;
-}
-
-function hymnVoicing(key: KeyInfo, degree: number, melodyMidi: number): number[] {
-  // Melody note itself is the soprano line; the chord synth only supplies
-  // bass/tenor/alto beneath it, close and static like a Bach chorale.
-  const rootPc = chordRootPitchClass(key, degree);
-  const [, thirdOffset, fifthOffset] = chordIntervals(key, degree, "triad");
-  const thirdPc = (rootPc + thirdOffset) % 12;
-  const fifthPc = (rootPc + fifthOffset) % 12;
-  const bass = pitchNear(rootPc, melodyMidi - 26);
-  const inner = stackClose([fifthPc, thirdPc], bass, melodyMidi - 1);
-  return [bass, ...inner];
-}
-
-function gospelVoicing(
-  key: KeyInfo,
-  degree: number,
-  melodyMidi: number,
-  walk: boolean
-): { notes: number[]; attackOffsetSec: number } {
-  const rootPc = chordRootPitchClass(key, degree);
-  const intervals = chordIntervals(key, degree, "ninth"); // [root, 3rd, 5th, 7th, 9th]
-  const pcs = intervals.map((i) => (rootPc + i) % 12);
-  // Walking-bass feel: alternate the bass between the root and the fifth
-  // (a stand-in passing tone) instead of always hammering the root.
-  const bassPc = walk ? pcs[2] : pcs[0];
-  const bass = pitchNear(bassPc, melodyMidi - 30);
-  const upper = stackClose([pcs[1], pcs[3], pcs[4]], bass, melodyMidi + 4);
-  return { notes: [bass, ...upper], attackOffsetSec: walk ? 0.045 : 0 };
-}
-
-function worshipVoicing(key: KeyInfo, degree: number, melodyMidi: number): number[] {
-  const useSus = degree === 5 || degree === 1;
-  const intervals = chordIntervals(key, degree, useSus ? "sus4" : "add9");
-  const rootPc = chordRootPitchClass(key, degree);
-  const pcs = intervals.map((i) => (rootPc + i) % 12);
-  const bass = pitchNear(rootPc, melodyMidi - 36);
-  const mid = pitchNear(pcs[1] ?? rootPc, bass + 19); // wide 12th+ gap for open air
-  const high = pitchNear(pcs[pcs.length - 1] ?? rootPc, melodyMidi - 2);
-  return [bass, mid, high];
-}
-
-function ccliVoicing(key: KeyInfo, degree: number, melodyMidi: number, progress: number): number[] {
-  const rootPc = chordRootPitchClass(key, degree);
-  const intervals = chordIntervals(key, degree, "seventh");
-  const pcs = intervals.map((i) => (rootPc + i) % 12);
-  const bass = pitchNear(rootPc, melodyMidi - 28);
-  // Verse -> chorus style build: start with just root+5th, layer in the 3rd
-  // and 7th as the song progresses so the same chord gets denser over time.
-  const layerOrder = [pcs[2], pcs[1], pcs[3]];
-  const layerCount = progress < 0.33 ? 1 : progress < 0.66 ? 2 : 3;
-  const upper = stackClose(layerOrder.slice(0, layerCount), bass, melodyMidi - 1);
-  return [bass, ...upper];
-}
-
-export interface HarmonizedChord {
-  notes: number[];
-  degree: number;
-  attackOffsetSec: number;
+  return voiceChord(rootPc, candidates[candidates.length - 1], melodyMidi);
 }
 
 /**
- * Builds the accompaniment chord for the note at `index`. Chromatic/non-diatonic
- * melody notes (scaleDegree === null) keep sounding over the previous chord
- * (`prevDegree`) instead of forcing a harmony change on every passing tone.
+ * 코드 하나를 스타일에 맞게 배치한다.
+ * bassPc 가 근음과 다르면 분수코드(D/F#)이므로 그 음을 맨 아래에 따로 놓는다.
  */
-export function harmonizeNote(
-  song: AnalyzedSong,
-  index: number,
-  style: HarmonyStyle,
-  prevDegree: number | null
-): HarmonizedChord | null {
-  if (style === "off") return null;
-  const note = song.notes[index];
-  if (!note) return null;
-  const degree = note.scaleDegree ?? prevDegree ?? 1;
-  const key = song.key;
+export function voiceForStyle(
+  style: HarmonyStyleDef,
+  rootPc: number,
+  intervals: number[],
+  melodyMidi: number,
+  bassPc?: number
+): number[] {
+  const upper = style.openVoicing
+    ? voiceWithFallback(
+        rootPc,
+        [[...intervals.slice(0, -1), intervals[intervals.length - 1] + 12], intervals],
+        melodyMidi
+      )
+    : voiceChord(rootPc, intervals, melodyMidi);
 
-  if (style === "hymn") {
-    return { notes: hymnVoicing(key, degree, note.midi), degree, attackOffsetSec: 0 };
-  }
-  if (style === "gospel") {
-    const walk = index % 2 === 1;
-    const { notes, attackOffsetSec } = gospelVoicing(key, degree, note.midi, walk);
-    return { notes, degree, attackOffsetSec };
-  }
-  if (style === "worship") {
-    return { notes: worshipVoicing(key, degree, note.midi), degree, attackOffsetSec: 0 };
-  }
-  // ccli
-  const total = Math.max(song.notes.length - 1, 1);
-  const progress = index / total;
-  return { notes: ccliVoicing(key, degree, note.midi, progress), degree, attackOffsetSec: 0 };
+  if (bassPc === undefined || bassPc === rootPc) return upper;
+
+  // 분수코드: 베이스를 화음 아래쪽에 따로 깐다.
+  let bass = pitchNear(bassPc, Math.min(...upper) - 7);
+  while (bass >= Math.min(...upper)) bass -= 12;
+  return [bass, ...upper];
 }

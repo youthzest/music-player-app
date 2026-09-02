@@ -43,6 +43,8 @@ export interface ParsedSong {
   notes: ParsedNote[];
   durationSeconds: number;
   sourceFormat: "midi" | "nwctxt";
+  /** 프롬프터용 가사. 공백으로 구분된 토큰 하나가 음표 하나에 대응한다. */
+  lyrics?: string;
 }
 
 export interface AnalyzedSong extends Omit<ParsedSong, "notes"> {

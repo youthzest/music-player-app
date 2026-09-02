@@ -1,8 +1,8 @@
 import { useRef, useState } from "react";
 import { parseMidiFile } from "../lib/midiParser";
-import { parseNwcTextFile, isNwcTextFormat } from "../lib/nwcParser";
+import { parseNwcTextFile, parseNwcText, isNwcTextFormat } from "../lib/nwcParser";
 import { analyzeSong } from "../lib/analyze";
-import { saveSong } from "../lib/api";
+import { saveSong, convertNwcFile } from "../lib/api";
 import { useAppStore } from "../store/useAppStore";
 
 export function FileUpload() {
@@ -21,19 +21,20 @@ export function FileUpload() {
       const isNwcText = isNwcTextFormat(file);
       const isBinaryNwc = /\.nwc$/i.test(file.name);
 
-      if (isBinaryNwc) {
-        throw new Error(
-          "바이너리 .nwc 파일은 지원하지 않습니다. Noteworthy Composer에서 '텍스트로 저장(.nwctxt)' 후 다시 업로드해주세요."
-        );
+      let parsed;
+      if (isMidi) {
+        parsed = await parseMidiFile(file);
+      } else if (isNwcText) {
+        parsed = await parseNwcTextFile(file);
+      } else if (isBinaryNwc) {
+        // 바이너리 .nwc 는 비공개 포맷이라 브라우저에서 못 읽는다.
+        // 서버의 nwc-conv 로 NWCTXT 를 받아온 뒤 기존 파서에 그대로 넘긴다.
+        setStatus("NWC 파일 변환 중...");
+        const nwctxt = await convertNwcFile(file);
+        parsed = parseNwcText(nwctxt, file.name.replace(/\.[^/.]+$/, ""));
+      } else {
+        throw new Error("지원하지 않는 파일 형식입니다 (.mid, .midi, .nwc, .nwctxt만 가능)");
       }
-
-      const parsed = isMidi
-        ? await parseMidiFile(file)
-        : isNwcText
-        ? await parseNwcTextFile(file)
-        : (() => {
-            throw new Error("지원하지 않는 파일 형식입니다 (.mid, .midi, .nwctxt만 가능)");
-          })();
 
       const analyzed = analyzeSong(parsed);
       setStatus(`분석 완료: ${analyzed.key.label}, ${analyzed.tempo} BPM, 음표 ${analyzed.notes.length}개`);

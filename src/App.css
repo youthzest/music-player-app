@@ -1,7 +1,14 @@
+/* 화면 높이를 넘기지 않게 잡아둔다. 이래야 안쪽 영역만 스크롤되고
+   하단 연주 독이 제자리에 고정된다.
+   dvh 를 모르는 브라우저(iOS 16.3 이하 사파리)는 이 선언을 통째로 버리므로
+   반드시 vh 를 먼저 써서 폴백을 남겨야 한다. 폴백이 없으면 높이가 auto 가 되고
+   overflow:hidden 만 남아 사이드바가 접히며 아래 내용과 겹친다. */
 .app {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   color: #f4f6ff;
 }
 
@@ -23,16 +30,11 @@
 
 .app__main {
   flex: 1;
+  min-height: 0; /* 없으면 그리드가 내용 높이만큼 늘어나 고정이 깨진다 */
   display: grid;
   grid-template-columns: 320px 1fr;
   gap: 1.5rem;
-  padding: 0 2rem 2rem;
-}
-
-@media (max-width: 800px) {
-  .app__main {
-    grid-template-columns: 1fr;
-  }
+  padding: 0 2rem 1rem;
 }
 
 .app__sidebar {
@@ -42,7 +44,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
-  height: fit-content;
+  min-height: 0;
+  overflow-y: auto;
 }
 
 .app__section-title {
@@ -60,10 +63,85 @@
 .app__stage {
   display: flex;
   flex-direction: column;
+  min-height: 0;
+  padding: 0 1rem;
+}
+
+/* 설정과 가사만 여기서 스크롤된다. 아무리 길어져도 아래 독을 밀지 못한다. */
+.app__stage-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1.5rem;
-  padding: 1rem;
+  gap: 1rem;
+  padding: 1rem 0;
+}
+
+/* 연주 영역. 항상 화면 아래쪽 같은 자리에 머문다. */
+.app__dock {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.9rem 0 0.6rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  /* 스크롤되는 가사가 독 뒤로 비쳐 보이지 않도록 배경을 깔아준다.
+     사파리는 아직 -webkit- 접두사가 필요하다. */
+  background: linear-gradient(to bottom, rgba(12, 14, 30, 0.92), rgba(12, 14, 30, 0.99));
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  /* 아이폰 홈 인디케이터에 버튼이 가리지 않도록 여백을 준다. */
+  padding-bottom: calc(0.6rem + env(safe-area-inset-bottom));
+}
+
+/* 좁은 화면에서는 중첩 스크롤을 쓰지 않는다.
+   iOS 사파리는 "높이가 잡힌 컨테이너 안의 스크롤 영역 안의 또 다른 스크롤 영역"에서
+   높이 계산이 어긋나 영역이 겹쳐 보이는 문제가 잦다. 그래서 모바일에서는 문서 전체를
+   평범하게 스크롤시키고, 연주 독만 sticky 로 화면 아래에 붙인다. */
+@media (max-width: 800px) {
+  .app {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .app__main {
+    grid-template-columns: 1fr;
+    min-height: 0;
+    overflow: visible;
+    padding: 0 1rem 1rem;
+  }
+
+  .app__sidebar {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .app__stage {
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .app__stage-scroll {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+    padding-bottom: 0;
+  }
+
+  .app__dock {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+  }
+
+  .prompter__lyrics {
+    max-height: 40vh;
+  }
 }
 
 .app__now-playing {
@@ -147,6 +225,462 @@
   color: #fff;
 }
 
+.app__collapse-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: #cfd6ff;
+  font-size: 1rem;
+  font-weight: 600;
+  padding: 0.4rem 0;
+  margin-top: 0.5rem;
+  cursor: pointer;
+  text-align: left;
+}
+
+.app__caret {
+  font-size: 0.7rem;
+  color: #8b93c4;
+}
+
+.catalog__count {
+  margin-left: auto;
+  font-size: 0.74rem;
+  font-weight: 400;
+  color: #8b93c4;
+}
+
+.catalog__body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.3rem;
+}
+
+.catalog__input {
+  width: 100%;
+  min-width: 0; /* flex 안에서 입력창이 줄어들지 못해 옆 요소를 밀어내는 것을 막는다 */
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: #f4f6ff;
+  padding: 0.55rem 0.7rem;
+  /* iOS 는 16px 미만 입력창에 포커스하면 화면을 확대해 레이아웃이 틀어진다. */
+  font-size: 16px;
+  font-family: inherit;
+  /* 사파리 기본 검색창 스타일(둥근 모서리·내부 그림자)을 끈다. */
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.catalog__input::placeholder {
+  color: #6f78a8;
+}
+
+.catalog__searchbar {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.catalog__searchbar .catalog__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.catalog__web {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #dfe3ff;
+  border-radius: 9px;
+  padding: 0 0.7rem;
+  font-size: 0.76rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.catalog__web:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.catalog__web:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.catalog__import {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 0.55rem;
+}
+
+.catalog__import-label {
+  font-size: 0.74rem;
+  color: #8b93c4;
+}
+
+.catalog__import-msg {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #9fe3b0;
+  overflow-wrap: anywhere;
+}
+
+.catalog__results {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-height: 42vh;
+  overflow-y: auto;
+}
+
+.catalog__result {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.1rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: none;
+  border-radius: 9px;
+  padding: 0.45rem 0.65rem;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.catalog__result:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.catalog__result:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.catalog__result-title {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #eef1ff;
+}
+
+.catalog__result-meta {
+  font-size: 0.7rem;
+  color: #8b93c4;
+}
+
+.catalog__progress,
+.catalog__empty {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #8b93c4;
+}
+
+.catalog__error {
+  margin: 0;
+  font-size: 0.78rem;
+  color: #ff8b7a;
+}
+
+.catalog__reindex {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #9aa5e0;
+  border-radius: 8px;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.72rem;
+  cursor: pointer;
+}
+
+.catalog__reindex:hover {
+  color: #dfe3ff;
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.prompter {
+  width: 100%;
+  max-width: 640px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 0.7rem 1rem 0.9rem;
+}
+
+.prompter__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.prompter__toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: none;
+  border: none;
+  color: #cfd6ff;
+  font-size: 0.92rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+}
+
+.prompter__caret {
+  font-size: 0.68rem;
+  color: #8b93c4;
+}
+
+.prompter__actions {
+  display: flex;
+  gap: 0.3rem;
+}
+
+.prompter__action {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #dfe3ff;
+  border-radius: 8px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.prompter__action:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.prompter__body {
+  margin-top: 0.6rem;
+}
+
+/* 글자 크기를 키워도 상자 자체는 크게 변하지 않고 안쪽만 스크롤된다. */
+.prompter__lyrics {
+  min-height: 9rem;
+  max-height: 34vh;
+  overflow-y: auto;
+  line-height: 1.75;
+  text-align: center;
+  overscroll-behavior: contain;
+}
+
+.prompter__line {
+  margin: 0 0 0.15rem;
+}
+
+.prompter__token {
+  display: inline-block;
+  padding: 0 0.12em;
+  color: #dfe3ff;
+  border-radius: 6px;
+  transition: color 0.12s ease, background 0.12s ease;
+}
+
+.prompter__token.sung {
+  color: #6f78a8;
+}
+
+.prompter__token.active {
+  background: #3a56d4;
+  color: #fff;
+  font-weight: 700;
+}
+
+.prompter__blank {
+  display: block;
+  height: 0.6em;
+}
+
+.prompter__empty,
+.prompter__hint {
+  color: #8b93c4;
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.prompter__editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.prompter__textarea {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  color: #f4f6ff;
+  padding: 0.6rem 0.7rem;
+  /* iOS 확대 방지 — 16px 미만이면 포커스 시 화면이 줌된다. */
+  font-size: 16px;
+  line-height: 1.6;
+  resize: vertical;
+  font-family: inherit;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.prompter__editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.prompter__save {
+  background: #3a56d4;
+  border: none;
+  color: #fff;
+  border-radius: 8px;
+  padding: 0.35rem 0.9rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.prompter__save:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.sound-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  width: 100%;
+  max-width: 480px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 14px;
+  padding: 0.8rem 1rem;
+}
+
+.sound-panel__row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.sound-panel__label {
+  flex: 0 0 3.4rem;
+  font-size: 0.78rem;
+  color: #9aa5e0;
+}
+
+.sound-panel__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.sound-panel__chip {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: #dfe3ff;
+  border-radius: 999px;
+  padding: 0.28rem 0.7rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.sound-panel__chip.active {
+  background: #3a56d4;
+  border-color: #3a56d4;
+  color: #fff;
+}
+
+.sound-panel__slider {
+  flex: 1;
+  min-width: 120px;
+  max-width: 220px;
+  accent-color: #3a56d4;
+  cursor: pointer;
+}
+
+.sound-panel__speed-value {
+  font-size: 0.78rem;
+  color: #dfe3ff;
+  font-variant-numeric: tabular-nums;
+  min-width: 3.2rem;
+}
+
+.sound-panel__chip:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.sound-panel__note {
+  margin: 0.1rem 0 0;
+  font-size: 0.72rem;
+  color: #8b93c4;
+}
+
+.chord-chart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  max-width: 560px;
+}
+
+.chord-chart__now {
+  min-height: 2.4rem;
+  display: flex;
+  align-items: center;
+}
+
+.chord-chart__now-label {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #9fd0ff;
+  letter-spacing: 0.02em;
+}
+
+.chord-chart__now-idle {
+  font-size: 0.8rem;
+  color: #8b93c4;
+}
+
+.chord-chart__strip {
+  display: flex;
+  gap: 0.3rem;
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 0.3rem 0.1rem;
+  scrollbar-width: thin;
+}
+
+.chord-chart__chip {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #cfd6ff;
+  white-space: nowrap;
+}
+
+.chord-chart__chip.passed {
+  opacity: 0.42;
+}
+
+.chord-chart__chip.active {
+  background: #2f6fb8;
+  border-color: #4a8fd8;
+  color: #fff;
+  opacity: 1;
+}
+
 .harmony-style-selector {
   display: flex;
   flex-direction: column;
@@ -159,7 +693,16 @@
   font-size: 0.75rem;
   color: #8b93c4;
   text-align: center;
-  max-width: 420px;
+  max-width: 460px;
+}
+
+.harmony-style-selector__signature {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #9fd0ff;
+  letter-spacing: 0.02em;
+  margin-bottom: 0.15rem;
 }
 
 .song-library {

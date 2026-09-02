@@ -19,7 +19,14 @@ export function HarmonyStyleSelector() {
           </button>
         ))}
       </div>
-      {active && <p className="harmony-style-selector__description">{active.description}</p>}
+      {active && (
+        <p className="harmony-style-selector__description">
+          {active.signature && (
+            <span className="harmony-style-selector__signature">{active.signature}</span>
+          )}
+          {active.description}
+        </p>
+      )}
     </div>
   );
 }
