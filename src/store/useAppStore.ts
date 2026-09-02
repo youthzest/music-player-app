@@ -21,6 +21,10 @@ interface AppState {
   melodyFocus: number;
   setMelodyFocus: (v: number) => void;
 
+  /** 멜로디 음 하나를 3도·5도 위로 쌓아 두껍게 낼지 (도 -> 도미솔) */
+  melodyStackOn: boolean;
+  setMelodyStackOn: (on: boolean) => void;
+
   harmonyStyle: HarmonyStyle;
   setHarmonyStyle: (style: HarmonyStyle) => void;
 
@@ -61,6 +65,9 @@ export const useAppStore = create<AppState>((set) => ({
 
   melodyFocus: 60,
   setMelodyFocus: (v) => set({ melodyFocus: v }),
+
+  melodyStackOn: false,
+  setMelodyStackOn: (on) => set({ melodyStackOn: on }),
 
   harmonyStyle: "off",
   setHarmonyStyle: (harmonyStyle) => set({ harmonyStyle }),

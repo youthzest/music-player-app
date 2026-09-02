@@ -7,6 +7,7 @@ import { Mixer } from "./mixer";
 import type { SpaceId } from "./spaces";
 import { getHarmonyStyle, voiceForStyle, type HarmonyStyle } from "../lib/harmony";
 import { chordAtIndex, type ChordSegment } from "../lib/chordChart";
+import { stackMelodyNote } from "../lib/melodyStack";
 
 /** Max continuous pitch bend range in cents (300 = about a whole step),
  * keeping the expressive bend close to the original melody note. */
@@ -29,6 +30,10 @@ export class MelodyPlayer {
   private harmonyStyle: HarmonyStyle = "off";
   private chart: ChordSegment[] = [];
   private activeSegment: ChordSegment | null = null;
+
+  private melodyStackOn = false;
+  /** 지금 울리고 있는 멜로디 성부 음 이름들 (스택이 켜져 있으면 2~3개). */
+  private activeMelodyNotes: string[] = [];
 
   constructor(instrumentId: InstrumentId = "piano-worship") {
     this.instrumentId = instrumentId;
@@ -66,6 +71,17 @@ export class MelodyPlayer {
   /** 0~100. 멜로디를 앞으로 끌어내는 정도. */
   setMelodyFocus(value: number) {
     this.mixer.setMelodyFocus(value);
+  }
+
+  /** 멜로디 음 하나를 3도·5도 위로 쌓아 두껍게 낼지. */
+  setMelodyStack(on: boolean) {
+    this.melodyStackOn = on;
+  }
+
+  /** 스택이 켜져 있으면 조성에 맞춰 3도·5도를 쌓은 음 이름들을, 아니면 원음 하나를 돌려준다. */
+  private melodyNoteNames(midi: number): string[] {
+    if (!this.melodyStackOn || !this.song) return [midiToNoteName(midi)];
+    return stackMelodyNote(midi, this.song.key).map(midiToNoteName);
   }
 
   setChordChart(chart: ChordSegment[]) {
@@ -160,7 +176,7 @@ export class MelodyPlayer {
 
     this.applyChordFor(index, note.midi, at);
     this.synth.triggerAttackRelease(
-      midiToNoteName(note.midi),
+      this.melodyNoteNames(note.midi),
       duration,
       at,
       this.mixer.melodyVelocity(note.velocity)
@@ -194,6 +210,7 @@ export class MelodyPlayer {
     this.mixer.releaseChord();
     this.activeSegment = null;
     this.activeNote = null;
+    this.activeMelodyNotes = [];
   }
 
   /** Plays the next note in the stored melody sequence and advances the pointer. */
@@ -210,11 +227,9 @@ export class MelodyPlayer {
 
     const now = Tone.now();
     this.applyChordFor(playedIndex, note.midi, now);
-    this.synth.triggerAttack(
-      midiToNoteName(note.midi),
-      now,
-      this.mixer.melodyVelocity(note.velocity)
-    );
+    const names = this.melodyNoteNames(note.midi);
+    this.synth.triggerAttack(names, now, this.mixer.melodyVelocity(note.velocity));
+    this.activeMelodyNotes = names;
     this.activeNote = note;
     return note;
   }
@@ -234,10 +249,11 @@ export class MelodyPlayer {
   release() {
     // 반주는 손을 떼도 그 코드 구간이 끝날 때까지 이어진다(패드처럼 받쳐주는 역할).
     if (!this.activeNote) return;
-    this.synth.triggerRelease(midiToNoteName(this.activeNote.midi), Tone.now());
+    this.synth.triggerRelease(this.activeMelodyNotes, Tone.now());
     this.synth.set({ detune: 0 } as never);
     this.vibrato.depth.rampTo(0, 0.15);
     this.activeNote = null;
+    this.activeMelodyNotes = [];
   }
 
   reset() {
